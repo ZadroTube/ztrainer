@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { useAppContext } from '../../context/AppContext';
 import { BaseExercise } from '../../types';
-import { Search, Plus, Trash2, Dumbbell, Edit2, X } from 'lucide-react';
+import { Search, Plus, Trash2, Dumbbell, Edit2, X, TrendingUp } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { fetchExerciseHistory } from '../../lib/supabase';
 
 
 export function WorkoutConstructor() {
@@ -11,8 +12,11 @@ export function WorkoutConstructor() {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  
+
   const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
+  const [historyId, setHistoryId] = useState<string | null>(null);
+  const [historyData, setHistoryData] = useState<Array<{ plan_date: string; weight_kg: number | null; sets: number; reps: number }>>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [exerciseForm, setExerciseForm] = useState({
     name: '',
     targetMuscleGroup: '',
@@ -79,6 +83,15 @@ export function WorkoutConstructor() {
 
   const handleAddToPlan = (exercise: BaseExercise) => {
     addExerciseToPlan(dateStr, exercise, exercise.defaultSets || 3, exercise.defaultReps || 10, exercise.defaultRestTimeSeconds || 60);
+  };
+
+  const toggleHistory = async (exId: string) => {
+    if (historyId === exId) { setHistoryId(null); return; }
+    setHistoryId(exId);
+    setHistoryLoading(true);
+    const data = await fetchExerciseHistory(exId);
+    setHistoryData(data as any);
+    setHistoryLoading(false);
   };
 
   return (
@@ -222,7 +235,8 @@ export function WorkoutConstructor() {
         {/* List */}
         <div className="grid grid-cols-1 gap-2">
           {filteredDb.map(ex => (
-            <div key={ex.id} className="flex items-center justify-between bg-slate-900 p-3 rounded-xl border border-slate-800 hover:border-slate-700 transition-colors">
+            <div key={ex.id}>
+              <div className="flex items-center justify-between bg-slate-900 p-3 rounded-xl border border-slate-800 hover:border-slate-700 transition-colors">
               <div>
                 <h3 className="text-sm font-medium text-slate-200">{ex.name}</h3>
                 <div className="flex items-center gap-2 mt-1">
@@ -237,25 +251,57 @@ export function WorkoutConstructor() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <button 
+                <button
+                  onClick={() => toggleHistory(ex.id)}
+                  className={cn("p-2 transition-colors", historyId === ex.id ? "text-cyan-400" : "text-slate-600 hover:text-cyan-400")}
+                  title="История"
+                >
+                  <TrendingUp className="w-4 h-4" />
+                </button>
+                <button
                   onClick={() => startEdit(ex)}
                   className="p-2 text-slate-500 hover:text-cyan-400 transition-colors"
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
-                <button 
+                <button
                   onClick={() => deleteExerciseFromDb(ex.id)}
                   className="p-2 text-slate-600 hover:text-red-400 transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
-                <button 
+                <button
                   onClick={() => handleAddToPlan(ex)}
                   className="p-2 text-cyan-400 hover:bg-cyan-500/20 bg-cyan-500/10 rounded-lg transition-colors ml-1"
                 >
                   <Plus className="w-5 h-5" />
                 </button>
               </div>
+              </div>
+              {historyId === ex.id && (
+              <div className="mt-2 bg-slate-800/60 rounded-xl p-3 border border-slate-700/50 animate-in slide-in-from-top-2 fade-in">
+                <h4 className="text-xs font-bold text-cyan-400 mb-2 uppercase tracking-wider">История</h4>
+                {historyLoading ? (
+                  <div className="flex items-center gap-2 text-slate-400 text-xs">
+                    <div className="w-4 h-4 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin" />
+                    Загрузка...
+                  </div>
+                ) : historyData.length === 0 ? (
+                  <p className="text-slate-500 text-xs">Нет данных</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {historyData.map((h, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs">
+                        <span className="text-slate-300">{h.plan_date}</span>
+                        <span className="text-slate-400">
+                          {h.sets}×{h.reps}{h.weight_kg ? ` • ${h.weight_kg} кг` : ''}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             </div>
           ))}
           {filteredDb.length === 0 && (

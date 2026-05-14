@@ -191,3 +191,15 @@ export async function unlockAchievement(achievementType: string) {
     .from("user_achievements")
     .upsert({ achievement_type: achievementType }, { onConflict: "user_id, achievement_type" });
 }
+
+export async function fetchExerciseHistory(exerciseId: string, limit = 10) {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const { data } = await supabase
+    .from("workout_plans")
+    .select("plan_date, weight_kg, sets, reps")
+    .eq("exercise_id", exerciseId)
+    .lte("plan_date", todayStr)
+    .order("plan_date", { ascending: false })
+    .limit(limit);
+  return data ?? [];
+}
