@@ -8,10 +8,17 @@ dist/
 .env
 .env.local
 
-# IDE
+# IDE / AI configs
 .vscode/
 .idea/
+.roo/
+
+# AI framework metadata
+metadata.json
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
