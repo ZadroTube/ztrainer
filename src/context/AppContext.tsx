@@ -355,9 +355,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetUserStats = () => {
-    setDailyDurations({}); setCompletedSets({}); setActualExerciseRests({});
+    setDailyDurations({}); setCompletedSets({}); setActualExerciseRests({}); setPlannedWorkouts({});
     setUserStats({ totalWorkoutSeconds: 0, totalSets: 0, currentStreak: 0, achievements: {} });
-    if (isTelegram) { supaSafe(supabase.from('workout_sessions').delete(), 'reset workout_sessions'); supaSafe(supabase.from('completed_sets').delete(), 'reset completed_sets'); supaSafe(supabase.from('exercise_rests').delete(), 'reset exercise_rests'); }
+    if (isTelegram) {
+      supaSafe(supabase.from('workout_sessions').delete(), 'reset workout_sessions');
+      supaSafe(supabase.from('completed_sets').delete(), 'reset completed_sets');
+      supaSafe(supabase.from('exercise_rests').delete(), 'reset exercise_rests');
+      supaSafe(supabase.from('workout_plans').delete(), 'reset workout_plans');
+      supaSafe(supabase.from('user_achievements').delete(), 'reset user_achievements');
+    }
   };
 
   return (
