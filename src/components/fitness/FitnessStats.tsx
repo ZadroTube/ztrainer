@@ -167,7 +167,7 @@ export function FitnessStats() {
                   </h4>
                   <p className="text-xs text-slate-500 mt-0.5">{ach.desc}</p>
                   {isUnlocked && unlockedAt && (
-                    <div className="text-[9px] text-cyan-500 mt-1 uppercase tracking-wider">
+                    <div className="text-[10px] text-cyan-500 mt-1 uppercase tracking-wider">
                       Разблокировано {safeFormatDate(unlockedAt, 'd MMM, HH:mm')}
                     </div>
                   )}

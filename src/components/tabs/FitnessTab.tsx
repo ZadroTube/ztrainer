@@ -139,7 +139,7 @@ export function FitnessTab() {
               )}
             >
               <span className={cn("text-[10px] md:text-xs", isSelected ? "" : "opacity-60")}>
-                {format(day, 'E', { locale: ru })}
+                {format(day, 'EEEEEE', { locale: ru })}
               </span>
               <span className="font-bold text-sm md:text-base">
                 {format(day, 'd')}

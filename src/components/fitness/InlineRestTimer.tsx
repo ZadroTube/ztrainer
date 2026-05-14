@@ -1,21 +1,59 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { Play, Pause, X, Plus, Minus } from 'lucide-react';
 
+function playBeep() {
+  try {
+    const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.25);
+  } catch { /* ignore audio errors */ }
+}
+
+function triggerVibrate() {
+  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+    navigator.vibrate([200, 100, 200]);
+  }
+}
+
 export function InlineRestTimer() {
-  const { 
-    restTimerEnd, restTimerDuration, clearRestTimer, 
+  const {
+    restTimerEnd, restTimerDuration, clearRestTimer,
     isRestPaused, pauseRestTimer, resumeRestTimer, restRemainingAtPause,
     adjustRestTimer
   } = useAppContext();
-  
+
   const [now, setNow] = useState(Date.now());
-  
+  const signaledRef = useRef(false);
+
   useEffect(() => {
-    if (!restTimerEnd && !isRestPaused) return;
+    if (!restTimerEnd && !isRestPaused) {
+      signaledRef.current = false;
+      return;
+    }
     const interval = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(interval);
   }, [restTimerEnd, isRestPaused]);
+
+  // Signal when timer hits zero
+  useEffect(() => {
+    const remainingMs = isRestPaused ? restRemainingAtPause : Math.max(0, (restTimerEnd ?? 0) - now);
+    if (remainingMs <= 0 && restTimerEnd && !signaledRef.current && !isRestPaused) {
+      signaledRef.current = true;
+      playBeep();
+      triggerVibrate();
+    }
+  }, [now, restTimerEnd, isRestPaused, restRemainingAtPause]);
 
   if (!restTimerEnd && !isRestPaused) return null;
 
