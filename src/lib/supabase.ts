@@ -17,6 +17,7 @@ export async function authViaTelegram(initData: string) {
     telegram_id: number;
     first_name?: string;
     username?: string;
+    photo_url?: string;
   }>("telegram-auth", {
     body: { initData },
   });

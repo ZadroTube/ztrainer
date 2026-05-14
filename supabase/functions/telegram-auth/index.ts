@@ -204,6 +204,7 @@ serve(async (req: Request) => {
         telegram_id: user.id,
         first_name: user.first_name,
         username: user.username,
+        photo_url: user.photo_url,
       }),
       { headers: corsHeaders() }
     );

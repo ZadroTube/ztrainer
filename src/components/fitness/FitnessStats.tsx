@@ -12,7 +12,7 @@ function safeFormatDate(value: unknown, fmt: string): string {
 }
 
 export function FitnessStats() {
-  const { plannedWorkouts, completedSets, userStats, dailyDurations, resetUserStats } = useAppContext();
+  const { plannedWorkouts, completedSets, userStats, dailyDurations, resetUserStats, userProfile } = useAppContext();
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const totalWorkoutsPlanned = Object.keys(plannedWorkouts).length;
@@ -52,11 +52,15 @@ export function FitnessStats() {
       
       {/* User Rank Overview */}
       <div className="flex items-center gap-4 mb-2 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
-        <div className="w-16 h-16 rounded-full border-2 border-cyan-500 flex items-center justify-center bg-slate-800 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
-          <span className="text-2xl font-bold text-cyan-400">Z</span>
+        <div className="w-16 h-16 rounded-full border-2 border-cyan-500 flex items-center justify-center bg-slate-800 shadow-[0_0_15px_rgba(6,182,212,0.3)] overflow-hidden">
+          {userProfile?.photo_url ? (
+            <img src={userProfile.photo_url} alt="avatar" className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-2xl font-bold text-cyan-400">{userProfile?.first_name?.[0] ?? 'Z'}</span>
+          )}
         </div>
         <div>
-          <h2 className="text-lg font-bold text-white">Кибер-Атлет</h2>
+          <h2 className="text-lg font-bold text-white">{userProfile?.first_name ?? userProfile?.username ?? 'Кибер-Атлет'}</h2>
           <p className="text-xs text-slate-400 mt-1">Ранг: Неоновый новичок</p>
         </div>
       </div>

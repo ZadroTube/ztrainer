@@ -10,9 +10,16 @@ export interface RestContext {
   setIndex?: number;
 }
 
+interface UserProfile {
+  first_name?: string;
+  username?: string;
+  photo_url?: string;
+}
+
 interface AppContextType {
   loading: boolean;
   isTelegram: boolean;
+  userProfile: UserProfile | null;
   activeTab: TabName;
   setActiveTab: (tab: TabName) => void;
   selectedDate: Date;
@@ -84,6 +91,7 @@ declare global {
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isTelegram, setIsTelegram] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<TabName>('fitness');
@@ -197,6 +205,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const result = await authViaTelegram(window.Telegram.WebApp.initData);
         if (result) {
           setIsTelegram(true);
+          setUserProfile({ first_name: result.first_name, username: result.username, photo_url: result.photo_url });
           setLoadError(null);
           await loadFromSupabase();
           return;
@@ -368,7 +377,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      loading, isTelegram,
+      loading, isTelegram, userProfile,
       activeTab, setActiveTab,
       selectedDate, setSelectedDate,
       viewMode, setViewMode,
