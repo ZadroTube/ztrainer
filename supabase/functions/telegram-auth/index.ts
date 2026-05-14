@@ -141,10 +141,16 @@ serve(async (req: Request) => {
 
     if (existing) {
       authUserId = existing.id;
-      // Миграция: обновляем пароль на актуальный (на случай если раньше был случайный)
+      // Миграция: обновляем пароль и метаданные на актуальные
       const { error: updateErr } = await supabase.auth.admin.updateUserById(authUserId, {
         password,
         email_confirm: true,
+        user_metadata: {
+          telegram_id: user.id,
+          first_name: user.first_name ?? "",
+          username: user.username ?? "",
+          photo_url: user.photo_url ?? "",
+        },
       });
       if (updateErr) {
         console.error("updateUser password error:", updateErr);
@@ -158,6 +164,7 @@ serve(async (req: Request) => {
           telegram_id: user.id,
           first_name: user.first_name ?? "",
           username: user.username ?? "",
+          photo_url: user.photo_url ?? "",
         },
       });
 

@@ -51,7 +51,7 @@ export function WorkoutConstructor() {
       defaultSets: Number(exerciseForm.defaultSets) || undefined,
       defaultReps: Number(exerciseForm.defaultReps) || undefined,
       defaultRestTimeSeconds: Number(exerciseForm.defaultRestTimeSeconds) || undefined,
-      defaultWeightKg: w !== '' && w !== undefined && Number(w) > 0 ? Number(w) : undefined,
+      defaultWeightKg: w !== '' && w !== undefined && !isNaN(Number(w)) && Number(w) >= 0 ? Number(w) : undefined,
     };
 
     if (editingExerciseId) {
@@ -76,7 +76,7 @@ export function WorkoutConstructor() {
       defaultSets: ex.defaultSets ?? 3,
       defaultReps: ex.defaultReps ?? 10,
       defaultRestTimeSeconds: ex.defaultRestTimeSeconds ?? 60,
-      defaultWeightKg: ex.defaultWeightKg ?? '',
+      defaultWeightKg: ex.defaultWeightKg != null ? ex.defaultWeightKg : '',
     });
     setIsCreating(true);
   };

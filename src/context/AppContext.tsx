@@ -152,7 +152,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         targetMuscleGroup: r.target_muscle_group,
         defaultSets: r.default_sets, defaultReps: r.default_reps,
         defaultRestTimeSeconds: r.default_rest_time_seconds,
-        defaultWeightKg: r.default_weight_kg ?? undefined,
+        defaultWeightKg: r.default_weight_kg != null ? Number(r.default_weight_kg) : undefined,
       })));
 
       const plans: PlannedWorkoutsDict = {};
@@ -163,7 +163,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           targetMuscleGroup: r.target_muscle_group,
           defaultSets: undefined, defaultReps: undefined, defaultRestTimeSeconds: undefined, defaultWeightKg: undefined,
           workoutId: r.id, sets: r.sets, reps: r.reps, restTimeSeconds: r.rest_time_seconds,
-          weightKg: r.weight_kg ?? undefined,
+          weightKg: r.weight_kg != null ? Number(r.weight_kg) : undefined,
         });
       }
       setPlannedWorkouts(plans);
