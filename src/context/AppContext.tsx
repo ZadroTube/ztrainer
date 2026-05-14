@@ -1,6 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { format, subDays, differenceInCalendarDays, parseISO } from 'date-fns';
-// используем crypto.randomUUID() вместо uuid пакета
 import { TabName, BaseExercise, WorkoutExercise, PlannedWorkoutsDict, CompletedSetsDict, UserStats } from '../types';
 import { supabase, authViaTelegram } from '../lib/supabase';
 
@@ -88,7 +87,7 @@ declare global {
   interface Window { Telegram?: { WebApp?: { initData?: string } } }
 }
 
-export function AppProvider({ children }: { children: React.ReactNode }) {
+export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isTelegram, setIsTelegram] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);

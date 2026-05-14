@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, type FC } from 'react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useAppContext } from '../../context/AppContext';
@@ -7,7 +7,7 @@ import { cn } from '../../lib/utils';
 import { WorkoutExercise } from '../../types';
 import { InlineRestTimer } from './InlineRestTimer';
 
-const ExerciseCard: React.FC<{ exercise: WorkoutExercise, index: number, dateStr: string, isDiaryMode: boolean }> = ({ exercise, index, dateStr, isDiaryMode }) => {
+const ExerciseCard: FC<{ exercise: WorkoutExercise, index: number, dateStr: string, isDiaryMode: boolean }> = ({ exercise, index, dateStr, isDiaryMode }) => {
   const [expanded, setExpanded] = useState(!isDiaryMode);
   const { completedSets, toggleSetCompletion, startRestTimer, restContext, removeExerciseFromPlan, actualExerciseRests } = useAppContext();
 

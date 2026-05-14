@@ -2,7 +2,7 @@ import { useAppContext } from '../../context/AppContext';
 import { format, subDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Dumbbell, Target, Zap, Flame, Clock, Award, AlertTriangle } from 'lucide-react';
+import { Dumbbell, Target, Zap, Flame, Clock, Award, AlertTriangle, Lock } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useState } from 'react';
 
@@ -177,7 +177,7 @@ export function FitnessStats() {
                   )}
                 </div>
                 {!isUnlocked && (
-                  <div className="text-xs text-slate-600 font-medium">🔒</div>
+                  <Lock className="w-4 h-4 text-slate-600" />
                 )}
               </div>
             );

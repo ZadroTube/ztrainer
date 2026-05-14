@@ -7,6 +7,7 @@ import { AppProvider, useAppContext } from './context/AppContext';
 import { TabContainer } from './components/tabs/TabContainer';
 import { BottomNav } from './components/layout/BottomNav';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { AlertTriangle } from 'lucide-react';
 
 function AppContent() {
   const { loading, loadError } = useAppContext();
@@ -23,7 +24,7 @@ function AppContent() {
   if (loadError) {
     return (
       <div className="h-screen w-full max-w-md mx-auto flex flex-col items-center justify-center bg-slate-950 text-white p-6">
-        <div className="text-5xl mb-4">⚠️</div>
+        <AlertTriangle className="w-12 h-12 text-yellow-400 mb-4" />
         <h1 className="text-lg font-bold mb-2 text-center">Ошибка загрузки</h1>
         <p className="text-slate-400 text-sm text-center mb-6">{loadError}</p>
         <button

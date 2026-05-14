@@ -1,7 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
+const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN");
+
+if (!BOT_TOKEN) {
+  console.error("FATAL: TELEGRAM_BOT_TOKEN is not set in Edge Function secrets");
+}
 
 interface InitDataUser {
   id: number;
@@ -96,6 +100,13 @@ async function derivePassword(telegramId: number, secret: string): Promise<strin
 }
 
 serve(async (req: Request) => {
+  if (!BOT_TOKEN) {
+    return new Response(
+      JSON.stringify({ error: "Server misconfigured: TELEGRAM_BOT_TOKEN missing" }),
+      { status: 500, headers: corsHeaders() }
+    );
+  }
+
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }

@@ -24,13 +24,6 @@ export type CompletedSetsDict = Record<string, boolean>;
 // Map of date (YYYY-MM-DD) to list of exercises
 export type PlannedWorkoutsDict = Record<string, WorkoutExercise[]>;
 
-export interface Achievement {
-  id: string;
-  title: string;
-  description: string;
-  icon: string;
-}
-
 export interface UserStats {
   totalWorkoutSeconds: number;
   totalSets: number;
