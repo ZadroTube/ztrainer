@@ -1,13 +1,13 @@
-import React from 'react';
+import { type ComponentType } from 'react';
 import { Home, Dumbbell, Film, User } from 'lucide-react';
-import { useAppContext } from '../../context/AppContext';
-import { TabName } from '../../types';
-import { cn } from '../../lib/utils';
+import { useUIContext } from '@/context/AppContext';
+import { TabName } from '@/types';
+import { cn } from '@/lib/utils';
 
 interface NavItemProps {
   id: TabName;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
 }
 
 const navItems: NavItemProps[] = [
@@ -18,7 +18,7 @@ const navItems: NavItemProps[] = [
 ];
 
 export function BottomNav() {
-  const { activeTab, setActiveTab } = useAppContext();
+  const { activeTab, setActiveTab } = useUIContext();
 
   return (
     <nav className="absolute bottom-0 w-full glass border-t border-slate-700/50 flex justify-between px-6 pb-6 pt-3 z-20">

@@ -1,19 +1,24 @@
-import React, { useState } from 'react';
+import { useState, useRef, type FormEvent } from 'react';
 import { format } from 'date-fns';
-import { useAppContext } from '../../context/AppContext';
-import { BaseExercise } from '../../types';
+import { useWorkoutData, useUIContext } from '@/context/AppContext';
+import { BaseExercise } from '@/types';
 import { Search, Plus, Trash2, Dumbbell, Edit2, X, TrendingUp } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { fetchExerciseHistory } from '../../lib/supabase';
+import { cn } from '@/lib/utils';
+import { fetchExerciseHistory } from '@/lib/supabase';
+
+const historyCache = new Map<string, Array<{ plan_date: string; weight_kg: number | null; sets: number; reps: number }>>();
 
 
 export function WorkoutConstructor() {
-  const { exerciseDb, addExerciseToDb, updateExerciseInDb, deleteExerciseFromDb, selectedDate, plannedWorkouts, addExerciseToPlan, removeExerciseFromPlan } = useAppContext();
+  const { exerciseDb, addExerciseToDb, updateExerciseInDb, deleteExerciseFromDb, plannedWorkouts, addExerciseToPlan, updatePlanExercise, removeExerciseFromPlan } = useWorkoutData();
+  const { selectedDate } = useUIContext();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
   const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
+  const [deletePlanConfirmId, setDeletePlanConfirmId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
   const [historyData, setHistoryData] = useState<Array<{ plan_date: string; weight_kg: number | null; sets: number; reps: number }>>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -40,7 +45,7 @@ export function WorkoutConstructor() {
     setIsCreating(false);
   };
 
-  const handleCreateOrUpdateExercise = (e: React.FormEvent) => {
+  const handleCreateOrUpdateExercise = (e: FormEvent) => {
     e.preventDefault();
     if (!exerciseForm.name.trim()) return;
 
@@ -88,9 +93,17 @@ export function WorkoutConstructor() {
   const toggleHistory = async (exId: string) => {
     if (historyId === exId) { setHistoryId(null); return; }
     setHistoryId(exId);
+    const cached = historyCache.get(exId);
+    if (cached) {
+      setHistoryData(cached);
+      setHistoryLoading(false);
+      return;
+    }
     setHistoryLoading(true);
     const data = await fetchExerciseHistory(exId);
-    setHistoryData(data as any);
+    const typed = data as Array<{ plan_date: string; weight_kg: number | null; sets: number; reps: number }>;
+    historyCache.set(exId, typed);
+    setHistoryData(typed);
     setHistoryLoading(false);
   };
 
@@ -113,21 +126,46 @@ export function WorkoutConstructor() {
         ) : (
           <div className="space-y-2">
             {todaysPlan.map((ex, idx) => (
-              <div key={ex.workoutId} className="flex items-center justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700/50">
-                <div>
+              <div key={ex.workoutId} className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50">
+                <div className="flex items-center justify-between">
                   <div className="font-medium text-slate-200 text-sm">
                     {idx + 1}. {ex.name}
                   </div>
-                  <div className="text-xs text-purple-400 mt-1">
-                    {ex.sets} подходов × {ex.reps} повторений{ex.weightKg ? ` • ${ex.weightKg} кг` : ''}
+                  <button 
+                    onClick={() => {
+                      if (deletePlanConfirmId === ex.workoutId) { removeExerciseFromPlan(dateStr, ex.workoutId); setDeletePlanConfirmId(null); }
+                      else { setDeletePlanConfirmId(ex.workoutId); setTimeout(() => setDeletePlanConfirmId(null), 3000); }
+                    }}
+                    className={cn("p-2 rounded-lg transition-colors", deletePlanConfirmId === ex.workoutId ? "text-red-400 bg-red-400/10" : "text-slate-500 hover:text-red-400 hover:bg-red-400/10")}
+                    title={deletePlanConfirmId === ex.workoutId ? "Нажмите ещё раз для удаления" : "Удалить"}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="flex items-center gap-1">
+                    <label className="text-[10px] text-slate-500">Подх.</label>
+                    <input type="number" min="1" value={ex.sets}
+                      onChange={(e) => updatePlanExercise(dateStr, ex.workoutId, { sets: parseInt(e.target.value) || 1 })}
+                      className="w-14 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-purple-400 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <label className="text-[10px] text-slate-500">Повт.</label>
+                    <input type="number" min="1" value={ex.reps}
+                      onChange={(e) => updatePlanExercise(dateStr, ex.workoutId, { reps: parseInt(e.target.value) || 1 })}
+                      className="w-14 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-purple-400 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <label className="text-[10px] text-slate-500">кг</label>
+                    <input type="number" step="0.5" min="0" placeholder="-"
+                      value={ex.weightKg ?? ''}
+                      onChange={(e) => updatePlanExercise(dateStr, ex.workoutId, { weightKg: e.target.value !== '' && !isNaN(Number(e.target.value)) && Number(e.target.value) >= 0 ? Number(e.target.value) : undefined })}
+                      className="w-14 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-purple-400 focus:outline-none focus:border-purple-500 placeholder:text-slate-600"
+                    />
                   </div>
                 </div>
-                <button 
-                  onClick={() => removeExerciseFromPlan(dateStr, ex.workoutId)}
-                  className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
               </div>
             ))}
           </div>
@@ -265,8 +303,12 @@ export function WorkoutConstructor() {
                   <Edit2 className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => deleteExerciseFromDb(ex.id)}
-                  className="p-2 text-slate-600 hover:text-red-400 transition-colors"
+                  onClick={() => {
+                    if (deleteConfirmId === ex.id) { deleteExerciseFromDb(ex.id); setDeleteConfirmId(null); }
+                    else { setDeleteConfirmId(ex.id); setTimeout(() => setDeleteConfirmId(null), 3000); }
+                  }}
+                  className={cn("p-2 transition-colors", deleteConfirmId === ex.id ? "text-red-400 bg-red-400/10" : "text-slate-600 hover:text-red-400")}
+                  title={deleteConfirmId === ex.id ? "Нажмите ещё раз для удаления" : "Удалить"}
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

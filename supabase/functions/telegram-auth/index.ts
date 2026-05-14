@@ -36,9 +36,18 @@ function parseInitData(initData: string): Record<string, string> {
   return map;
 }
 
-async function validateInitData(initData: string): Promise<boolean> {
+async function validateInitData(initData: string): Promise<{ valid: boolean; error?: string }> {
   const params = parseInitData(initData);
   const hash = params.hash;
+
+  if (!hash) return { valid: false, error: "Missing hash" };
+
+  const authDate = Number(params.auth_date);
+  if (!authDate) return { valid: false, error: "Missing auth_date" };
+  if (Math.floor(Date.now() / 1000) - authDate > 300) {
+    return { valid: false, error: "initData expired" };
+  }
+
   delete params.hash;
 
   const checkString = Object.keys(params)
@@ -76,7 +85,7 @@ async function validateInitData(initData: string): Promise<boolean> {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 
-  return hex === hash;
+  return hex === hash ? { valid: true } : { valid: false, error: "Invalid signature" };
 }
 
 /** Детерминированный пароль — только Edge Function знает BOT_TOKEN */
@@ -122,9 +131,9 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "initData is required" }), { status: 400, headers: corsHeaders() });
     }
 
-    const valid = await validateInitData(initData);
-    if (!valid) {
-      return new Response(JSON.stringify({ error: "Invalid initData" }), { status: 401, headers: corsHeaders() });
+    const validation = await validateInitData(initData);
+    if (!validation.valid) {
+      return new Response(JSON.stringify({ error: validation.error ?? "Invalid initData" }), { status: 401, headers: corsHeaders() });
     }
 
     const params = parseInitData(initData);
@@ -143,15 +152,16 @@ serve(async (req: Request) => {
     );
 
     // 1. Проверить, есть ли уже пользователь с таким telegram_id
-    const { data: existingUsers } = await supabase.auth.admin.listUsers();
-    const existing = existingUsers?.users?.find(
-      (u) => u.user_metadata?.telegram_id === user.id
-    );
+    const { data: existingProfile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("telegram_id", user.id)
+      .maybeSingle();
 
     let authUserId: string;
 
-    if (existing) {
-      authUserId = existing.id;
+    if (existingProfile) {
+      authUserId = existingProfile.id;
       // Миграция: обновляем пароль и метаданные на актуальные
       const { error: updateErr } = await supabase.auth.admin.updateUserById(authUserId, {
         password,

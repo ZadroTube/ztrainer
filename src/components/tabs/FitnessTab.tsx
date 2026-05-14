@@ -1,37 +1,34 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { format, addDays, subDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { useAppContext } from '../../context/AppContext';
-import { cn } from '../../lib/utils';
+import { useUIContext, useWorkoutData, useTimerContext } from '@/context/AppContext';
+import { cn } from '@/lib/utils';
 import { Activity, Calendar as CalendarIcon, PieChart, Play, Pause, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
-import { WorkoutTracker } from '../fitness/WorkoutTracker';
-import { WorkoutConstructor } from '../fitness/WorkoutConstructor';
+import { WorkoutTracker } from '@/components/fitness/WorkoutTracker';
+import { WorkoutConstructor } from '@/components/fitness/WorkoutConstructor';
 
-const FitnessStats = lazy(() => import('../fitness/FitnessStats').then(m => ({ default: m.FitnessStats })));
+const FitnessStats = lazy(() => import('@/components/fitness/FitnessStats').then(m => ({ default: m.FitnessStats })));
 
 function HeaderControls() {
-  const { 
-    workoutStartTime, workoutAccumulatedMs, isWorkoutPaused, 
-    startWorkoutTimer, pauseWorkoutTimer, resetWorkoutTimer 
-  } = useAppContext();
+  const { workoutStartTime, workoutAccumulatedMs, isWorkoutPaused, startWorkoutTimer, pauseWorkoutTimer, resetWorkoutTimer } = useTimerContext();
   
   const [now, setNow] = useState(Date.now());
-  const [sysTimeStr, setSysTimeStr] = useState('');
+  const [sysTimeStr, setSysTimeStr] = useState(format(new Date(), 'HH:mm'));
+  const hasStarted = workoutAccumulatedMs > 0 || workoutStartTime !== null;
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(Date.now());
-      setSysTimeStr(format(new Date(), 'HH:mm'));
-    }, 1000);
-    // Init immediately
-    setSysTimeStr(format(new Date(), 'HH:mm'));
+    if (!hasStarted) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [hasStarted]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setSysTimeStr(format(new Date(), 'HH:mm')), 60000);
     return () => clearInterval(timer);
   }, []);
 
   const elapsedMs = workoutAccumulatedMs + (workoutStartTime && !isWorkoutPaused ? (now - workoutStartTime) : 0);
   const elapsedSeconds = Math.floor(elapsedMs / 1000);
-  
-  const hasStarted = elapsedMs > 0 || workoutStartTime !== null;
 
   const formatTimer = (totalSeconds: number) => {
     const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
@@ -73,7 +70,8 @@ function HeaderControls() {
 }
 
 export function FitnessTab() {
-  const { selectedDate, setSelectedDate, viewMode, setViewMode, dailyDurations } = useAppContext();
+  const { selectedDate, setSelectedDate, viewMode, setViewMode } = useUIContext();
+  const { dailyDurations } = useWorkoutData();
   const [activeSubTab, setActiveSubTab] = useState<'tracker' | 'constructor' | 'stats'>('tracker');
   
   // horizontal calendar

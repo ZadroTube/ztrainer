@@ -1,12 +1,15 @@
 import { useEffect, useState, useRef } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useTimerContext } from '@/context/AppContext';
 import { Play, Pause, X, Plus, Minus } from 'lucide-react';
+
+let _audioCtx: AudioContext | null = null;
 
 function playBeep() {
   try {
     const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
-    const ctx = new AudioCtx();
+    if (!_audioCtx) _audioCtx = new AudioCtx();
+    const ctx = _audioCtx;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -31,7 +34,7 @@ export function InlineRestTimer() {
     restTimerEnd, restTimerDuration, clearRestTimer,
     isRestPaused, pauseRestTimer, resumeRestTimer, restRemainingAtPause,
     adjustRestTimer
-  } = useAppContext();
+  } = useTimerContext();
 
   const [now, setNow] = useState(Date.now());
   const signaledRef = useRef(false);

@@ -1,7 +1,7 @@
-import React from 'react';
+import { Component, type ReactNode } from 'react';
 
 interface Props {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 interface State {
@@ -9,8 +9,11 @@ interface State {
   error: Error | null;
 }
 
-export class ErrorBoundary extends React.Component<Props, State> {
-  state: State = { hasError: false, error: null };
+export class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
@@ -26,7 +29,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
             {this.state.error?.message ?? 'Неизвестная ошибка'}
           </p>
           <button
-            onClick={() => { (this as any).setState({ hasError: false, error: null }); window.location.reload(); }}
+            onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
             className="px-6 py-3 bg-cyan-500 text-black font-bold rounded-xl hover:bg-cyan-400 active:scale-95 transition-all"
           >
             Перезагрузить
@@ -34,6 +37,6 @@ export class ErrorBoundary extends React.Component<Props, State> {
         </div>
       );
     }
-    return (this as any).props.children;
+    return this.props.children;
   }
 }

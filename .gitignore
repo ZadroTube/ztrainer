@@ -7,6 +7,8 @@ dist/
 # Environment variables
 .env
 .env.local
+.env.*.local
+**/.env
 
 # IDE / AI configs
 .vscode/
@@ -15,6 +17,9 @@ dist/
 
 # AI framework metadata
 metadata.json
+
+# Supabase CLI local
+supabase/.temp/
 
 # OS
 .DS_Store

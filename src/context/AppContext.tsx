@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { format, differenceInCalendarDays, parseISO } from 'date-fns';
-import { TabName, BaseExercise, WorkoutExercise, PlannedWorkoutsDict, CompletedSetsDict, UserStats } from '../types';
-import { supabase, authViaTelegram } from '../lib/supabase';
+import { format, subDays, differenceInCalendarDays, parseISO } from 'date-fns';
+import { TabName, BaseExercise, WorkoutExercise, PlannedWorkoutsDict, CompletedSetsDict, UserStats } from '@/types';
+import { supabase, authViaTelegram } from '@/lib/supabase';
 
 export interface RestContext {
   type: 'set' | 'exercise';
@@ -15,32 +15,96 @@ interface UserProfile {
   photo_url?: string;
 }
 
-interface AppContextType {
+interface ExerciseRow {
+  id: string; name: string; target_muscle_group: string | null;
+  default_sets: number; default_reps: number; default_rest_time_seconds: number;
+  default_weight_kg: number | null;
+}
+
+interface WorkoutPlanRow {
+  id: string; exercise_id: string | null; name: string; target_muscle_group: string | null;
+  plan_date: string; sets: number; reps: number; rest_time_seconds: number | null;
+  weight_kg: number | null; sort_order: number;
+}
+
+interface CompletedSetRow {
+  plan_date: string; workout_plan_id: string; set_index: number;
+}
+
+interface SessionRow {
+  plan_date: string; duration_seconds: number;
+}
+
+interface ExerciseRestRow {
+  workout_plan_id: string; actual_rest_seconds: number; recorded_at: string;
+}
+
+interface AchievementRow {
+  achievement_type: string; unlocked_at: string;
+}
+
+const defaultExercises: BaseExercise[] = [
+  { id: '1', name: 'Жим лежа', targetMuscleGroup: 'Грудь', defaultSets: 3, defaultReps: 10, defaultRestTimeSeconds: 90 },
+  { id: '2', name: 'Приседания со штангой', targetMuscleGroup: 'Ноги', defaultSets: 3, defaultReps: 12, defaultRestTimeSeconds: 120 },
+  { id: '3', name: 'Подтягивания', targetMuscleGroup: 'Спина', defaultSets: 3, defaultReps: 8, defaultRestTimeSeconds: 90 },
+];
+
+let _setSyncError: ((msg: string | null) => void) | null = null;
+
+function supaSafe<T>(promise: PromiseLike<T>, label: string, rollback?: () => void) {
+  Promise.resolve(promise).catch((e: unknown) => {
+    console.error(`Supabase ${label} error:`, e);
+    _setSyncError?.(`Ошибка сохранения: ${label}`);
+    rollback?.();
+    setTimeout(() => _setSyncError?.(null), 5000);
+  });
+}
+
+declare global {
+  interface Window { Telegram?: { WebApp?: { initData?: string } } }
+}
+
+// ===================== Context types =====================
+
+interface UIContextType {
   loading: boolean;
   isTelegram: boolean;
   userProfile: UserProfile | null;
+  loadError: string | null;
+  syncError: string | null;
   activeTab: TabName;
   setActiveTab: (tab: TabName) => void;
   selectedDate: Date;
   setSelectedDate: (date: Date) => void;
   viewMode: 'plan' | 'diary';
   setViewMode: (mode: 'plan' | 'diary') => void;
+}
+
+interface WorkoutDataContextType {
   exerciseDb: BaseExercise[];
   addExerciseToDb: (exercise: Omit<BaseExercise, 'id'>) => void;
   updateExerciseInDb: (id: string, exercise: Omit<BaseExercise, 'id'>) => void;
   deleteExerciseFromDb: (id: string) => void;
   plannedWorkouts: PlannedWorkoutsDict;
   addExerciseToPlan: (dateStr: string, exercise: BaseExercise, sets: number, reps: number, restTimeSeconds?: number) => void;
+  updatePlanExercise: (dateStr: string, workoutId: string, updates: Partial<Pick<WorkoutExercise, 'sets' | 'reps' | 'restTimeSeconds' | 'weightKg'>>) => void;
   removeExerciseFromPlan: (dateStr: string, workoutId: string) => void;
   completedSets: CompletedSetsDict;
   toggleSetCompletion: (dateStr: string, workoutId: string, setIndex: number, isCompleted: boolean) => void;
+  dailyDurations: Record<string, number>;
+  userStats: UserStats;
+  resetUserStats: () => void;
+  actualExerciseRests: Record<string, number>;
+  finishWorkout: () => void;
+}
+
+interface TimerContextType {
   workoutStartTime: number | null;
   workoutAccumulatedMs: number;
   isWorkoutPaused: boolean;
   startWorkoutTimer: () => void;
   pauseWorkoutTimer: () => void;
   resetWorkoutTimer: () => void;
-  finishWorkout: () => void;
   restTimerEnd: number | null;
   restTimerDuration: number;
   restContext: RestContext | null;
@@ -51,51 +115,43 @@ interface AppContextType {
   resumeRestTimer: () => void;
   clearRestTimer: () => void;
   adjustRestTimer: (deltaSeconds: number) => void;
-  dailyDurations: Record<string, number>;
-  userStats: UserStats;
-  resetUserStats: () => void;
-  actualExerciseRests: Record<string, number>;
-  loadError: string | null;
 }
 
-const defaultExercises: BaseExercise[] = [
-  { id: '1', name: 'Жим лежа', targetMuscleGroup: 'Грудь', defaultSets: 3, defaultReps: 10, defaultRestTimeSeconds: 90 },
-  { id: '2', name: 'Приседания со штангой', targetMuscleGroup: 'Ноги', defaultSets: 3, defaultReps: 12, defaultRestTimeSeconds: 120 },
-  { id: '3', name: 'Подтягивания', targetMuscleGroup: 'Спина', defaultSets: 3, defaultReps: 8, defaultRestTimeSeconds: 90 },
-];
+// ===================== Contexts =====================
 
-// Dev-режим: чистое состояние, без фейковых тренировок
+const UIContext = createContext<UIContextType | undefined>(undefined);
+const WorkoutDataContext = createContext<WorkoutDataContextType | undefined>(undefined);
+const TimerContext = createContext<TimerContextType | undefined>(undefined);
 
-const AppContext = createContext<AppContextType | undefined>(undefined);
-
-function supaSafe<T>(promise: PromiseLike<T>, label: string) {
-  Promise.resolve(promise).catch((e: unknown) => console.error(`Supabase ${label} error:`, e));
-}
-
-declare global {
-  interface Window { Telegram?: { WebApp?: { initData?: string } } }
-}
+// ===================== Provider =====================
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  // --- UI state ---
   const [loading, setLoading] = useState(true);
   const [isTelegram, setIsTelegram] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  _setSyncError = setSyncError;
 
   const [activeTab, setActiveTab] = useState<TabName>('fitness');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [viewMode, setViewMode] = useState<'plan' | 'diary'>('plan');
 
+  // --- Workout data ---
   const [exerciseDb, setExerciseDb] = useState<BaseExercise[]>([]);
   const [plannedWorkouts, setPlannedWorkouts] = useState<PlannedWorkoutsDict>({});
   const [completedSets, setCompletedSets] = useState<CompletedSetsDict>({});
   const [dailyDurations, setDailyDurations] = useState<Record<string, number>>({});
   const [actualExerciseRests, setActualExerciseRests] = useState<Record<string, number>>({});
+  const [userStats, setUserStats] = useState<UserStats>({
+    totalWorkoutSeconds: 0, totalSets: 0, currentStreak: 0, achievements: {},
+  });
 
+  // --- Timer state ---
   const [workoutStartTime, setWorkoutStartTime] = useState<number | null>(null);
   const [workoutAccumulatedMs, setWorkoutAccumulatedMs] = useState<number>(0);
   const [isWorkoutPaused, setIsWorkoutPaused] = useState<boolean>(false);
-
   const [restTimerEnd, setRestTimerEnd] = useState<number | null>(null);
   const [restTimerDuration, setRestTimerDuration] = useState<number>(0);
   const [restContext, setRestContext] = useState<RestContext | null>(null);
@@ -105,10 +161,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [restPausedAt, setRestPausedAt] = useState<number | null>(null);
   const [restAccumulatedPause, setRestAccumulatedPause] = useState<number>(0);
 
-  const [userStats, setUserStats] = useState<UserStats>({
-    totalWorkoutSeconds: 0, totalSets: 0, currentStreak: 0, achievements: {},
-  });
-
+  // --- Init ---
   const initDev = useCallback(() => {
     setExerciseDb(defaultExercises);
     setPlannedWorkouts({});
@@ -119,36 +172,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const loadFromSupabase = useCallback(async () => {
     try {
-      const [
-        { data: exercises },
-        { data: wp },
-        { data: cs },
-        { data: ws },
-        { data: er },
-        { data: ua },
-      ] = await Promise.all([
+      const since = format(subDays(new Date(), 60), 'yyyy-MM-dd');
+      const [{ data: exercises }, { data: wp }, { data: cs }, { data: ws }, { data: er }, { data: ua }] = await Promise.all([
         supabase.from('exercises').select('*').order('created_at'),
-        supabase.from('workout_plans').select('*').order('sort_order'),
-        supabase.from('completed_sets').select('*'),
-        supabase.from('workout_sessions').select('plan_date, duration_seconds'),
-        supabase.from('exercise_rests').select('*'),
+        supabase.from('workout_plans').select('*').gte('plan_date', since).order('sort_order'),
+        supabase.from('completed_sets').select('*').gte('plan_date', since),
+        supabase.from('workout_sessions').select('plan_date, duration_seconds').gte('plan_date', since),
+        supabase.from('exercise_rests').select('*').gte('recorded_at', since),
         supabase.from('user_achievements').select('*'),
       ]);
 
-      setExerciseDb((exercises ?? []).map((r: any) => ({
-        id: r.id, name: r.name,
-        targetMuscleGroup: r.target_muscle_group,
+      setExerciseDb((exercises ?? []).map((r: ExerciseRow) => ({
+        id: r.id, name: r.name, targetMuscleGroup: r.target_muscle_group ?? undefined,
         defaultSets: r.default_sets, defaultReps: r.default_reps,
         defaultRestTimeSeconds: r.default_rest_time_seconds,
         defaultWeightKg: r.default_weight_kg != null ? Number(r.default_weight_kg) : undefined,
       })));
 
       const plans: PlannedWorkoutsDict = {};
-      for (const r of (wp ?? []) as any[]) {
+      for (const r of (wp ?? []) as WorkoutPlanRow[]) {
         if (!plans[r.plan_date]) plans[r.plan_date] = [];
         plans[r.plan_date].push({
-          id: r.exercise_id ?? '', name: r.name,
-          targetMuscleGroup: r.target_muscle_group,
+          id: r.exercise_id ?? '', name: r.name, targetMuscleGroup: r.target_muscle_group,
           defaultSets: undefined, defaultReps: undefined, defaultRestTimeSeconds: undefined, defaultWeightKg: undefined,
           workoutId: r.id, sets: r.sets, reps: r.reps, restTimeSeconds: r.rest_time_seconds,
           weightKg: r.weight_kg != null ? Number(r.weight_kg) : undefined,
@@ -157,26 +202,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setPlannedWorkouts(plans);
 
       const sets: CompletedSetsDict = {};
-      for (const r of (cs ?? []) as any[]) {
-        sets[`${r.plan_date}_${r.workout_plan_id}_${r.set_index}`] = true;
-      }
+      for (const r of (cs ?? []) as CompletedSetRow[]) { sets[`${r.plan_date}_${r.workout_plan_id}_${r.set_index}`] = true; }
       setCompletedSets(sets);
 
       const durations: Record<string, number> = {};
-      for (const r of (ws ?? []) as any[]) {
-        durations[r.plan_date] = (durations[r.plan_date] ?? 0) + r.duration_seconds;
-      }
+      for (const r of (ws ?? []) as SessionRow[]) { durations[r.plan_date] = (durations[r.plan_date] ?? 0) + r.duration_seconds; }
       setDailyDurations(durations);
 
       const rests: Record<string, number> = {};
-      for (const r of (er ?? []) as any[]) {
+      for (const r of (er ?? []) as ExerciseRestRow[]) {
         const d = format(new Date(r.recorded_at), 'yyyy-MM-dd');
         rests[`${d}_${r.workout_plan_id}`] = (rests[`${d}_${r.workout_plan_id}`] ?? 0) + r.actual_rest_seconds;
       }
       setActualExerciseRests(rests);
 
       const ach: Record<string, number> = {};
-      for (const r of (ua ?? []) as any[]) { ach[r.achievement_type] = new Date(r.unlocked_at).getTime(); }
+      for (const r of (ua ?? []) as AchievementRow[]) { ach[r.achievement_type] = new Date(r.unlocked_at).getTime(); }
       setUserStats(prev => ({ ...prev, achievements: ach }));
 
       setLoading(false);
@@ -211,11 +252,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return;
       }
-      // Не Telegram — dev/demo режим с чистыми данными
       initDev();
     })();
   }, [loadFromSupabase, initDev]);
 
+  // --- Stats derivation ---
   useEffect(() => {
     let totalSeconds = 0;
     for (const d of Object.values(dailyDurations)) totalSeconds += d as number;
@@ -224,7 +265,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setUserStats(prev => ({ ...prev, totalWorkoutSeconds: 0, totalSets: 0, currentStreak: 0 }));
       return;
     }
-    const activeDates = [...new Set(Object.keys(completedSets).map(k => k.split('_')[0]))].sort((a,b) => b.localeCompare(a));
+    const activeDates = [...new Set(Object.keys(completedSets).map(k => k.split('_')[0]))].sort((a, b) => b.localeCompare(a));
     let streak = 0, cd = new Date();
     for (const ds of activeDates) {
       const diff = differenceInCalendarDays(cd, parseISO(ds));
@@ -235,9 +276,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (totalSetsCompleted > 0 && !achievements['first_workout']) achievements['first_workout'] = now;
     if (streak >= 3 && !achievements['streak_3']) achievements['streak_3'] = now;
     if (streak >= 7 && !achievements['streak_7']) achievements['streak_7'] = now;
-    if (totalSeconds >= 5*3600 && !achievements['time_5h']) achievements['time_5h'] = now;
+    if (totalSeconds >= 5 * 3600 && !achievements['time_5h']) achievements['time_5h'] = now;
     if (totalSetsCompleted >= 100 && !achievements['volume_100']) achievements['volume_100'] = now;
-    setUserStats({ totalWorkoutSeconds: totalSeconds, totalSets: totalSetsCompleted, currentStreak: Math.max(streak, 1), achievements });
+    setUserStats({ totalWorkoutSeconds: totalSeconds, totalSets: totalSetsCompleted, currentStreak: totalSetsCompleted > 0 ? Math.max(streak, 1) : 0, achievements });
 
     if (isTelegram) {
       const newAchs = Object.entries(achievements).filter(([k]) => !userStats.achievements[k]);
@@ -247,7 +288,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [completedSets, dailyDurations, userStats.achievements, isTelegram]);
 
-  // --- Timer logic (unchanged) ---
+  // --- Timer logic ---
   const startWorkoutTimer = () => {
     if (isWorkoutPaused) { setWorkoutStartTime(Date.now()); setIsWorkoutPaused(false); }
     else if (!workoutStartTime) { setWorkoutStartTime(Date.now()); setWorkoutAccumulatedMs(0); setIsWorkoutPaused(false); }
@@ -305,46 +346,82 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // --- CRUD with Supabase sync ---
+  // --- CRUD with Supabase sync + rollback ---
   const addExerciseToDb = (ex: Omit<BaseExercise, 'id'>) => {
     const n = { ...ex, id: crypto.randomUUID() };
     setExerciseDb(prev => [...prev, n]);
-    if (isTelegram) supaSafe(supabase.from('exercises').insert({ id: n.id, name: n.name, target_muscle_group: n.targetMuscleGroup ?? null, default_sets: n.defaultSets ?? 3, default_reps: n.defaultReps ?? 10, default_rest_time_seconds: n.defaultRestTimeSeconds ?? 90, default_weight_kg: n.defaultWeightKg ?? null }), 'exercises insert');
+    if (isTelegram) supaSafe(
+      supabase.from('exercises').insert({ id: n.id, name: n.name, target_muscle_group: n.targetMuscleGroup ?? null, default_sets: n.defaultSets ?? 3, default_reps: n.defaultReps ?? 10, default_rest_time_seconds: n.defaultRestTimeSeconds ?? 90, default_weight_kg: n.defaultWeightKg ?? null }),
+      'exercises insert',
+      () => setExerciseDb(prev => prev.filter(e => e.id !== n.id)),
+    );
   };
   const updateExerciseInDb = (id: string, ex: Omit<BaseExercise, 'id'>) => {
-    setExerciseDb(prev => prev.map(e => e.id === id ? { ...ex, id } : e));
-    if (isTelegram) supaSafe(supabase.from('exercises').update({ name: ex.name, target_muscle_group: ex.targetMuscleGroup ?? null, default_sets: ex.defaultSets ?? 3, default_reps: ex.defaultReps ?? 10, default_rest_time_seconds: ex.defaultRestTimeSeconds ?? 90, default_weight_kg: ex.defaultWeightKg ?? null }).eq('id', id), 'exercises update');
+    setExerciseDb(prev => { const old = prev.find(e => e.id === id); return prev.map(e => e.id === id ? { ...ex, id } : e); });
+    if (isTelegram) supaSafe(
+      supabase.from('exercises').update({ name: ex.name, target_muscle_group: ex.targetMuscleGroup ?? null, default_sets: ex.defaultSets ?? 3, default_reps: ex.defaultReps ?? 10, default_rest_time_seconds: ex.defaultRestTimeSeconds ?? 90, default_weight_kg: ex.defaultWeightKg ?? null }).eq('id', id),
+      'exercises update',
+      () => setExerciseDb(prev => prev.map(e => e.id === id ? { ...ex, id } : e)),
+    );
   };
-  const deleteExerciseFromDb = (id: string) => { setExerciseDb(prev => prev.filter(e => e.id !== id)); if (isTelegram) supaSafe(supabase.from('exercises').delete().eq('id', id), 'exercises delete'); };
+  const deleteExerciseFromDb = (id: string) => {
+    setExerciseDb(prev => { const removed = prev.find(e => e.id === id); return prev.filter(e => e.id !== id); });
+    if (isTelegram) supaSafe(supabase.from('exercises').delete().eq('id', id), 'exercises delete');
+  };
 
   const addExerciseToPlan = (dateStr: string, exercise: BaseExercise, sets: number, reps: number, rt?: number) => {
     const wid = crypto.randomUUID();
+    const weightKg = exercise.defaultWeightKg;
+    const newItem = { ...exercise, workoutId: wid, sets, reps, restTimeSeconds: rt, weightKg };
     setPlannedWorkouts(prev => {
       const today = prev[dateStr] ?? [];
       const newSortOrder = today.length;
-      const weightKg = exercise.defaultWeightKg;
-      const newItem = { ...exercise, workoutId: wid, sets, reps, restTimeSeconds: rt, weightKg };
-      if (isTelegram) supaSafe(supabase.from('workout_plans').insert({ id: wid, plan_date: dateStr, exercise_id: exercise.id, name: exercise.name, target_muscle_group: exercise.targetMuscleGroup ?? null, sets, reps, rest_time_seconds: rt ?? null, weight_kg: weightKg ?? null, sort_order: newSortOrder }), 'workout_plans insert');
+      if (isTelegram) supaSafe(
+        supabase.from('workout_plans').insert({ id: wid, plan_date: dateStr, exercise_id: exercise.id, name: exercise.name, target_muscle_group: exercise.targetMuscleGroup ?? null, sets, reps, rest_time_seconds: rt ?? null, weight_kg: weightKg ?? null, sort_order: newSortOrder }),
+        'workout_plans insert',
+        () => setPlannedWorkouts(p => ({ ...p, [dateStr]: (p[dateStr] ?? []).filter(e => e.workoutId !== wid) })),
+      );
       return { ...prev, [dateStr]: [...today, newItem] };
     });
+  };
+
+  const updatePlanExercise = (dateStr: string, wid: string, updates: Partial<Pick<WorkoutExercise, 'sets' | 'reps' | 'restTimeSeconds' | 'weightKg'>>) => {
+    setPlannedWorkouts(prev => ({
+      ...prev,
+      [dateStr]: (prev[dateStr] ?? []).map(ex => ex.workoutId === wid ? { ...ex, ...updates } : ex),
+    }));
+    if (isTelegram) {
+      const sbUpdates: Record<string, unknown> = {};
+      if (updates.sets !== undefined) sbUpdates.sets = updates.sets;
+      if (updates.reps !== undefined) sbUpdates.reps = updates.reps;
+      if (updates.restTimeSeconds !== undefined) sbUpdates.rest_time_seconds = updates.restTimeSeconds ?? null;
+      if (updates.weightKg !== undefined) sbUpdates.weight_kg = updates.weightKg ?? null;
+      supaSafe(supabase.from('workout_plans').update(sbUpdates).eq('id', wid), 'workout_plans update');
+    }
   };
 
   const removeExerciseFromPlan = (dateStr: string, wid: string) => {
     setPlannedWorkouts(prev => ({ ...prev, [dateStr]: (prev[dateStr] ?? []).filter(e => e.workoutId !== wid) }));
     setCompletedSets(prev => { const n = { ...prev }; for (const k of Object.keys(n)) { if (k.includes(wid)) delete n[k]; } return n; });
-    if (isTelegram) { supaSafe(supabase.from('workout_plans').delete().eq('id', wid), 'workout_plans delete'); supaSafe(supabase.from('completed_sets').delete().eq('workout_plan_id', wid), 'completed_sets delete'); }
+    if (isTelegram) {
+      supaSafe(supabase.from('workout_plans').delete().eq('id', wid), 'workout_plans delete');
+      supaSafe(supabase.from('completed_sets').delete().eq('workout_plan_id', wid), 'completed_sets delete');
+    }
   };
 
   const toggleSetCompletion = (dateStr: string, wid: string, si: number, done: boolean) => {
     if (done && !workoutStartTime && !workoutAccumulatedMs) startWorkoutTimer();
-    setCompletedSets(prev => {
-      const key = `${dateStr}_${wid}_${si}`;
-      if (!done) { const n = { ...prev }; delete n[key]; return n; }
-      return { ...prev, [key]: true };
-    });
-    if (isTelegram) {
-      if (done) supaSafe(supabase.from('completed_sets').upsert({ workout_plan_id: wid, plan_date: dateStr, set_index: si }, { onConflict: 'user_id, workout_plan_id, set_index' }), 'completed_sets upsert');
-      else supaSafe(supabase.from('completed_sets').delete().eq('workout_plan_id', wid).eq('set_index', si), 'completed_sets delete');
+    const key = `${dateStr}_${wid}_${si}`;
+    if (!done) {
+      setCompletedSets(prev => { const n = { ...prev }; delete n[key]; return n; });
+      if (isTelegram) supaSafe(supabase.from('completed_sets').delete().eq('workout_plan_id', wid).eq('set_index', si), 'completed_sets delete');
+    } else {
+      setCompletedSets(prev => ({ ...prev, [key]: true }));
+      if (isTelegram) supaSafe(
+        supabase.from('completed_sets').upsert({ workout_plan_id: wid, plan_date: dateStr, set_index: si }, { onConflict: 'user_id, workout_plan_id, set_index' }),
+        'completed_sets upsert',
+        () => setCompletedSets(prev => { const n = { ...prev }; delete n[key]; return n; }),
+      );
     }
   };
 
@@ -371,28 +448,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // --- Context values ---
+  const uiValue: UIContextType = {
+    loading, isTelegram, userProfile, loadError, syncError,
+    activeTab, setActiveTab, selectedDate, setSelectedDate, viewMode, setViewMode,
+  };
+
+  const workoutDataValue: WorkoutDataContextType = {
+    exerciseDb, addExerciseToDb, updateExerciseInDb, deleteExerciseFromDb,
+    plannedWorkouts, addExerciseToPlan, updatePlanExercise, removeExerciseFromPlan,
+    completedSets, toggleSetCompletion, dailyDurations, userStats, resetUserStats,
+    actualExerciseRests, finishWorkout,
+  };
+
+  const timerValue: TimerContextType = {
+    workoutStartTime, workoutAccumulatedMs, isWorkoutPaused,
+    startWorkoutTimer, pauseWorkoutTimer, resetWorkoutTimer,
+    restTimerEnd, restTimerDuration, restContext, isRestPaused, restRemainingAtPause,
+    startRestTimer, pauseRestTimer, resumeRestTimer, clearRestTimer, adjustRestTimer,
+  };
+
   return (
-    <AppContext.Provider value={{
-      loading, isTelegram, userProfile,
-      activeTab, setActiveTab,
-      selectedDate, setSelectedDate,
-      viewMode, setViewMode,
-      exerciseDb, addExerciseToDb, updateExerciseInDb, deleteExerciseFromDb,
-      plannedWorkouts, addExerciseToPlan, removeExerciseFromPlan,
-      completedSets, toggleSetCompletion,
-      workoutStartTime, workoutAccumulatedMs, isWorkoutPaused,
-      startWorkoutTimer, pauseWorkoutTimer, resetWorkoutTimer, finishWorkout,
-      restTimerEnd, restTimerDuration, restContext, isRestPaused, restRemainingAtPause,
-      startRestTimer, pauseRestTimer, resumeRestTimer, clearRestTimer, adjustRestTimer,
-      dailyDurations, userStats, resetUserStats, actualExerciseRests, loadError
-    }}>
-      {children}
-    </AppContext.Provider>
+    <UIContext.Provider value={uiValue}>
+      <WorkoutDataContext.Provider value={workoutDataValue}>
+        <TimerContext.Provider value={timerValue}>
+          {children}
+        </TimerContext.Provider>
+      </WorkoutDataContext.Provider>
+    </UIContext.Provider>
   );
 }
 
+// ===================== Hooks =====================
+
+export function useUIContext() {
+  const ctx = useContext(UIContext);
+  if (!ctx) throw new Error('useUIContext must be used within AppProvider');
+  return ctx;
+}
+
+export function useWorkoutData() {
+  const ctx = useContext(WorkoutDataContext);
+  if (!ctx) throw new Error('useWorkoutData must be used within AppProvider');
+  return ctx;
+}
+
+export function useTimerContext() {
+  const ctx = useContext(TimerContext);
+  if (!ctx) throw new Error('useTimerContext must be used within AppProvider');
+  return ctx;
+}
+
 export function useAppContext() {
-  const context = useContext(AppContext);
-  if (context === undefined) throw new Error('useAppContext must be used within an AppProvider');
-  return context;
+  return { ...useUIContext(), ...useWorkoutData(), ...useTimerContext() };
 }

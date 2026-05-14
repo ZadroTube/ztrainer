@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AppProvider, useAppContext } from './context/AppContext';
-import { TabContainer } from './components/tabs/TabContainer';
-import { BottomNav } from './components/layout/BottomNav';
-import { ErrorBoundary } from './components/ErrorBoundary';
+import { AppProvider, useUIContext } from '@/context/AppContext';
+import { TabContainer } from '@/components/tabs/TabContainer';
+import { BottomNav } from '@/components/layout/BottomNav';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AlertTriangle } from 'lucide-react';
 
 function AppContent() {
-  const { loading, loadError } = useAppContext();
+  const { loading, loadError, syncError } = useUIContext();
 
   if (loading) {
     return (
@@ -44,6 +44,12 @@ function AppContent() {
       <div className="relative z-10 flex flex-col h-full">
         <TabContainer />
         <BottomNav />
+        {syncError && (
+          <div className="absolute top-4 left-2 right-2 z-50 bg-red-500/90 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-lg flex items-center gap-2 animate-in slide-in-from-top-2 fade-in">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span>{syncError}</span>
+          </div>
+        )}
       </div>
     </div>
   );

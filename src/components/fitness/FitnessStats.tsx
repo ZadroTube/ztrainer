@@ -1,9 +1,9 @@
-import { useAppContext } from '../../context/AppContext';
+import { useWorkoutData, useUIContext } from '@/context/AppContext';
 import { format, subDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { Dumbbell, Target, Zap, Flame, Clock, Award, AlertTriangle, Lock } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/lib/utils';
 import { useState } from 'react';
 
 function safeFormatDate(value: unknown, fmt: string): string {
@@ -12,7 +12,8 @@ function safeFormatDate(value: unknown, fmt: string): string {
 }
 
 export function FitnessStats() {
-  const { plannedWorkouts, completedSets, userStats, dailyDurations, resetUserStats, userProfile } = useAppContext();
+  const { plannedWorkouts, completedSets, userStats, dailyDurations, resetUserStats } = useWorkoutData();
+  const { userProfile } = useUIContext();
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const totalWorkoutsPlanned = Object.keys(plannedWorkouts).length;

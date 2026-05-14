@@ -1,9 +1,9 @@
-import { PlaceholderTab } from './PlaceholderTab';
-import { FitnessTab } from './FitnessTab';
-import { useAppContext } from '../../context/AppContext';
+import { PlaceholderTab } from '@/components/tabs/PlaceholderTab';
+import { FitnessTab } from '@/components/tabs/FitnessTab';
+import { useUIContext } from '@/context/AppContext';
 
 export function TabContainer() {
-  const { activeTab } = useAppContext();
+  const { activeTab } = useUIContext();
 
   return (
     <main key={activeTab} className="flex-1 overflow-y-auto w-full custom-scrollbar animate-in fade-in slide-in-from-right-4 duration-300">

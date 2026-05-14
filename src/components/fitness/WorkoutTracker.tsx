@@ -1,15 +1,17 @@
 import { useState, type FC } from 'react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { useAppContext } from '../../context/AppContext';
+import { useWorkoutData, useTimerContext, useUIContext } from '@/context/AppContext';
 import { Check, ChevronDown, ChevronUp, Play, Clock, StopCircle, Trash2 } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { WorkoutExercise } from '../../types';
+import { cn } from '@/lib/utils';
+import { WorkoutExercise } from '@/types';
 import { InlineRestTimer } from './InlineRestTimer';
 
 const ExerciseCard: FC<{ exercise: WorkoutExercise, index: number, dateStr: string, isDiaryMode: boolean }> = ({ exercise, index, dateStr, isDiaryMode }) => {
   const [expanded, setExpanded] = useState(!isDiaryMode);
-  const { completedSets, toggleSetCompletion, startRestTimer, restContext, removeExerciseFromPlan, actualExerciseRests } = useAppContext();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const { completedSets, toggleSetCompletion, actualExerciseRests, removeExerciseFromPlan } = useWorkoutData();
+  const { startRestTimer, restContext, startWorkoutTimer } = useTimerContext();
 
   // Helper to check if a specific set is done
   const isSetCompleted = (setIdx: number) => {
@@ -36,9 +38,9 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise, index: number, dateStr: stri
       }
 
       if (completedCountAfterThis === totalSets) {
-        // Last set completed -> rest between different exercises 
         setExpanded(false);
-        startRestTimer(180, { type: 'exercise', workoutId: exercise.workoutId });
+        const exerciseRest = Math.max(exercise.restTimeSeconds || 60, 120);
+        startRestTimer(exerciseRest, { type: 'exercise', workoutId: exercise.workoutId });
       } else {
         // Rest between sets of same exercise
         startRestTimer(exercise.restTimeSeconds || 60, { type: 'set', workoutId: exercise.workoutId, setIndex: setIdx });
@@ -86,8 +88,13 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise, index: number, dateStr: stri
         
         <div className="flex items-center gap-3">
           <button 
-            onClick={(e) => { e.stopPropagation(); removeExerciseFromPlan(dateStr, exercise.workoutId); }}
-            className="active:scale-90 p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (confirmDelete) { removeExerciseFromPlan(dateStr, exercise.workoutId); setConfirmDelete(false); }
+              else { setConfirmDelete(true); setTimeout(() => setConfirmDelete(false), 3000); }
+            }}
+            className={cn("active:scale-90 p-1.5 rounded-lg transition-all", confirmDelete ? "text-red-400 bg-red-400/10" : "text-slate-500 hover:text-red-400 hover:bg-red-400/10")}
+            title={confirmDelete ? "Нажмите ещё раз для удаления" : "Удалить"}
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -168,7 +175,9 @@ function formatDurationSeconds(totalSeconds: number) {
 }
 
 export function WorkoutTracker() {
-  const { selectedDate, plannedWorkouts, viewMode, completedSets, dailyDurations, workoutStartTime, workoutAccumulatedMs, finishWorkout } = useAppContext();
+  const { selectedDate, viewMode } = useUIContext();
+  const { plannedWorkouts, completedSets, dailyDurations, finishWorkout } = useWorkoutData();
+  const { workoutStartTime, workoutAccumulatedMs } = useTimerContext();
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
   
   const todaysPlan = plannedWorkouts[dateStr] || [];
@@ -183,8 +192,7 @@ export function WorkoutTracker() {
     }
     
     if (viewMode === 'diary') {
-      // Show in diary only if day is finished, and we did at least 1 set
-      return isDayFinished && completedCount > 0;
+      return completedCount > 0;
     }
     
     // In plan mode, show everything if day is NOT finished
@@ -233,7 +241,7 @@ export function WorkoutTracker() {
         </div>
         <h3 className="text-lg font-bold text-slate-300">План пуст</h3>
         <p className="text-slate-500 text-sm max-w-[250px]">
-          В расписании на этот день пусто. Перейдите во вкладку "Construct", чтобы составить план.
+          В расписании на этот день пусто. Перейдите во вкладку «Билдер», чтобы составить план.
         </p>
       </div>
     );
