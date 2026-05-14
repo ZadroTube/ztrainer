@@ -144,6 +144,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         targetMuscleGroup: r.target_muscle_group,
         defaultSets: r.default_sets, defaultReps: r.default_reps,
         defaultRestTimeSeconds: r.default_rest_time_seconds,
+        defaultWeightKg: r.default_weight_kg ?? undefined,
       })));
 
       const plans: PlannedWorkoutsDict = {};
@@ -152,8 +153,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         plans[r.plan_date].push({
           id: r.exercise_id ?? '', name: r.name,
           targetMuscleGroup: r.target_muscle_group,
-          defaultSets: undefined, defaultReps: undefined, defaultRestTimeSeconds: undefined,
+          defaultSets: undefined, defaultReps: undefined, defaultRestTimeSeconds: undefined, defaultWeightKg: undefined,
           workoutId: r.id, sets: r.sets, reps: r.reps, restTimeSeconds: r.rest_time_seconds,
+          weightKg: r.weight_kg ?? undefined,
         });
       }
       setPlannedWorkouts(plans);
@@ -302,11 +304,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addExerciseToDb = (ex: Omit<BaseExercise, 'id'>) => {
     const n = { ...ex, id: crypto.randomUUID() };
     setExerciseDb(prev => [...prev, n]);
-    if (isTelegram) supaSafe(supabase.from('exercises').insert({ id: n.id, name: n.name, target_muscle_group: n.targetMuscleGroup ?? null, default_sets: n.defaultSets ?? 3, default_reps: n.defaultReps ?? 10, default_rest_time_seconds: n.defaultRestTimeSeconds ?? 90 }), 'exercises insert');
+    if (isTelegram) supaSafe(supabase.from('exercises').insert({ id: n.id, name: n.name, target_muscle_group: n.targetMuscleGroup ?? null, default_sets: n.defaultSets ?? 3, default_reps: n.defaultReps ?? 10, default_rest_time_seconds: n.defaultRestTimeSeconds ?? 90, default_weight_kg: n.defaultWeightKg ?? null }), 'exercises insert');
   };
   const updateExerciseInDb = (id: string, ex: Omit<BaseExercise, 'id'>) => {
     setExerciseDb(prev => prev.map(e => e.id === id ? { ...ex, id } : e));
-    if (isTelegram) supaSafe(supabase.from('exercises').update({ name: ex.name, target_muscle_group: ex.targetMuscleGroup ?? null, default_sets: ex.defaultSets ?? 3, default_reps: ex.defaultReps ?? 10, default_rest_time_seconds: ex.defaultRestTimeSeconds ?? 90 }).eq('id', id), 'exercises update');
+    if (isTelegram) supaSafe(supabase.from('exercises').update({ name: ex.name, target_muscle_group: ex.targetMuscleGroup ?? null, default_sets: ex.defaultSets ?? 3, default_reps: ex.defaultReps ?? 10, default_rest_time_seconds: ex.defaultRestTimeSeconds ?? 90, default_weight_kg: ex.defaultWeightKg ?? null }).eq('id', id), 'exercises update');
   };
   const deleteExerciseFromDb = (id: string) => { setExerciseDb(prev => prev.filter(e => e.id !== id)); if (isTelegram) supaSafe(supabase.from('exercises').delete().eq('id', id), 'exercises delete'); };
 
@@ -315,8 +317,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setPlannedWorkouts(prev => {
       const today = prev[dateStr] ?? [];
       const newSortOrder = today.length;
-      const newItem = { ...exercise, workoutId: wid, sets, reps, restTimeSeconds: rt };
-      if (isTelegram) supaSafe(supabase.from('workout_plans').insert({ id: wid, plan_date: dateStr, exercise_id: exercise.id, name: exercise.name, target_muscle_group: exercise.targetMuscleGroup ?? null, sets, reps, rest_time_seconds: rt ?? null, sort_order: newSortOrder }), 'workout_plans insert');
+      const weightKg = exercise.defaultWeightKg;
+      const newItem = { ...exercise, workoutId: wid, sets, reps, restTimeSeconds: rt, weightKg };
+      if (isTelegram) supaSafe(supabase.from('workout_plans').insert({ id: wid, plan_date: dateStr, exercise_id: exercise.id, name: exercise.name, target_muscle_group: exercise.targetMuscleGroup ?? null, sets, reps, rest_time_seconds: rt ?? null, weight_kg: weightKg ?? null, sort_order: newSortOrder }), 'workout_plans insert');
       return { ...prev, [dateStr]: [...today, newItem] };
     });
   };

@@ -7,6 +7,7 @@ export interface BaseExercise {
   defaultSets?: number;
   defaultReps?: number;
   defaultRestTimeSeconds?: number;
+  defaultWeightKg?: number; // undefined = без веса (подтягивания, бег и т.д.)
 }
 
 export interface WorkoutExercise extends BaseExercise {
@@ -14,6 +15,7 @@ export interface WorkoutExercise extends BaseExercise {
   sets: number;
   reps: number;
   restTimeSeconds?: number;
+  weightKg?: number; // undefined = без веса
 }
 
 // Key is `${dateStr}_${workoutId}_${setIndex}`

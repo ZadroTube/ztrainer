@@ -54,6 +54,7 @@ export async function createExercise(exercise: {
   default_sets?: number;
   default_reps?: number;
   default_rest_time_seconds?: number;
+  default_weight_kg?: number | null;
 }) {
   return supabase.from("exercises").insert(exercise).select().single();
 }
@@ -66,6 +67,7 @@ export async function updateExercise(
     default_sets?: number;
     default_reps?: number;
     default_rest_time_seconds?: number;
+    default_weight_kg?: number | null;
   }
 ) {
   return supabase.from("exercises").update(exercise).eq("id", id).select().single();
@@ -92,6 +94,7 @@ export async function addExerciseToPlan(planDate: string, item: {
   sets: number;
   reps: number;
   rest_time_seconds?: number;
+  weight_kg?: number | null;
   sort_order?: number;
 }) {
   return supabase.from("workout_plans").insert({ plan_date: planDate, ...item }).select().single();

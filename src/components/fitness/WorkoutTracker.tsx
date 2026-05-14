@@ -114,7 +114,7 @@ const ExerciseCard: React.FC<{ exercise: WorkoutExercise, index: number, dateStr
                 >
                   <span className="text-xs w-8 opacity-50">{setIdx + 1}</span>
                   <span className="text-xs flex-1 text-slate-200">
-                    {exercise.reps} повторений {/* Placeholder for weight: 80 кг × 10 etc */}
+                    {exercise.weightKg ? `${exercise.weightKg} кг × ` : ''}{exercise.reps} повторений
                   </span>
                   
                   <div className={cn(

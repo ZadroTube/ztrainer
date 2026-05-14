@@ -18,19 +18,20 @@ export function WorkoutConstructor() {
     targetMuscleGroup: '',
     defaultSets: 3,
     defaultReps: 10,
-    defaultRestTimeSeconds: 60
+    defaultRestTimeSeconds: 60,
+    defaultWeightKg: '' as string | number,
   });
 
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
   const todaysPlan = plannedWorkouts[dateStr] || [];
 
-  const filteredDb = exerciseDb.filter(ex => 
-    ex.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredDb = exerciseDb.filter(ex =>
+    ex.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (ex.targetMuscleGroup && ex.targetMuscleGroup.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const resetForm = () => {
-    setExerciseForm({ name: '', targetMuscleGroup: '', defaultSets: 3, defaultReps: 10, defaultRestTimeSeconds: 60 });
+    setExerciseForm({ name: '', targetMuscleGroup: '', defaultSets: 3, defaultReps: 10, defaultRestTimeSeconds: 60, defaultWeightKg: '' });
     setEditingExerciseId(null);
     setIsCreating(false);
   };
@@ -38,13 +39,15 @@ export function WorkoutConstructor() {
   const handleCreateOrUpdateExercise = (e: React.FormEvent) => {
     e.preventDefault();
     if (!exerciseForm.name.trim()) return;
-    
-    const exerciseData = {
+
+    const w = exerciseForm.defaultWeightKg;
+    const exerciseData: Omit<BaseExercise, 'id'> = {
       name: exerciseForm.name.trim(),
       targetMuscleGroup: exerciseForm.targetMuscleGroup.trim() || undefined,
       defaultSets: Number(exerciseForm.defaultSets) || undefined,
       defaultReps: Number(exerciseForm.defaultReps) || undefined,
       defaultRestTimeSeconds: Number(exerciseForm.defaultRestTimeSeconds) || undefined,
+      defaultWeightKg: w !== '' && w !== undefined && Number(w) > 0 ? Number(w) : undefined,
     };
 
     if (editingExerciseId) {
@@ -52,7 +55,7 @@ export function WorkoutConstructor() {
     } else {
       addExerciseToDb(exerciseData);
     }
-    
+
     resetForm();
   };
 
@@ -68,7 +71,8 @@ export function WorkoutConstructor() {
       targetMuscleGroup: ex.targetMuscleGroup || '',
       defaultSets: ex.defaultSets ?? 3,
       defaultReps: ex.defaultReps ?? 10,
-      defaultRestTimeSeconds: ex.defaultRestTimeSeconds ?? 60
+      defaultRestTimeSeconds: ex.defaultRestTimeSeconds ?? 60,
+      defaultWeightKg: ex.defaultWeightKg ?? '',
     });
     setIsCreating(true);
   };
@@ -102,7 +106,7 @@ export function WorkoutConstructor() {
                     {idx + 1}. {ex.name}
                   </div>
                   <div className="text-xs text-purple-400 mt-1">
-                    {ex.sets} подходов × {ex.reps} повторений
+                    {ex.sets} подходов × {ex.reps} повторений{ex.weightKg ? ` • ${ex.weightKg} кг` : ''}
                   </div>
                 </div>
                 <button 
@@ -165,10 +169,10 @@ export function WorkoutConstructor() {
               onChange={(e) => setExerciseForm({ ...exerciseForm, targetMuscleGroup: e.target.value })}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-cyan-500"
             />
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <div>
                 <label className="text-[10px] text-slate-400 mb-1 block">Подходов</label>
-                <input 
+                <input
                   type="number" min="1"
                   value={exerciseForm.defaultSets}
                   onChange={(e) => setExerciseForm({ ...exerciseForm, defaultSets: parseInt(e.target.value) || 1 })}
@@ -177,7 +181,7 @@ export function WorkoutConstructor() {
               </div>
               <div>
                 <label className="text-[10px] text-slate-400 mb-1 block">Повторений</label>
-                <input 
+                <input
                   type="number" min="1"
                   value={exerciseForm.defaultReps}
                   onChange={(e) => setExerciseForm({ ...exerciseForm, defaultReps: parseInt(e.target.value) || 1 })}
@@ -185,8 +189,18 @@ export function WorkoutConstructor() {
                 />
               </div>
               <div>
+                <label className="text-[10px] text-slate-400 mb-1 block">Вес (кг)</label>
+                <input
+                  type="number" step="0.5" min="0"
+                  placeholder="Без веса"
+                  value={exerciseForm.defaultWeightKg}
+                  onChange={(e) => setExerciseForm({ ...exerciseForm, defaultWeightKg: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-cyan-500 placeholder:text-slate-600"
+                />
+              </div>
+              <div>
                 <label className="text-[10px] text-slate-400 mb-1 block">Отдых (сек)</label>
-                <input 
+                <input
                   type="number" step="10" min="0"
                   value={exerciseForm.defaultRestTimeSeconds}
                   onChange={(e) => setExerciseForm({ ...exerciseForm, defaultRestTimeSeconds: parseInt(e.target.value) || 0 })}
@@ -218,7 +232,7 @@ export function WorkoutConstructor() {
                     </span>
                   )}
                   <span className="text-[10px] text-slate-500">
-                    {ex.defaultSets || 3}x{ex.defaultReps || 10} • {ex.defaultRestTimeSeconds || 60}с
+                    {ex.defaultSets || 3}x{ex.defaultReps || 10}{ex.defaultWeightKg ? ` • ${ex.defaultWeightKg} кг` : ''} • {ex.defaultRestTimeSeconds || 60}с
                   </span>
                 </div>
               </div>
