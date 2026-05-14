@@ -204,7 +204,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     for (const d of Object.values(dailyDurations)) totalSeconds += d as number;
     const totalSetsCompleted = Object.values(completedSets).filter(v => v).length;
     if (!totalSetsCompleted && !totalSeconds) {
-      setUserStats({ totalWorkoutSeconds: 0, totalSets: 0, currentStreak: 0, achievements: {} });
+      setUserStats(prev => ({ ...prev, totalWorkoutSeconds: 0, totalSets: 0, currentStreak: 0 }));
       return;
     }
     const activeDates = [...new Set(Object.keys(completedSets).map(k => k.split('_')[0]))].sort((a,b) => b.localeCompare(a));
@@ -304,9 +304,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const wid = crypto.randomUUID();
     setPlannedWorkouts(prev => {
       const today = prev[dateStr] ?? [];
-      return { ...prev, [dateStr]: [...today, { ...exercise, workoutId: wid, sets, reps, restTimeSeconds: rt }] };
+      const newSortOrder = today.length;
+      const newItem = { ...exercise, workoutId: wid, sets, reps, restTimeSeconds: rt };
+      if (isTelegram) supaSafe(supabase.from('workout_plans').insert({ id: wid, plan_date: dateStr, exercise_id: exercise.id, name: exercise.name, target_muscle_group: exercise.targetMuscleGroup ?? null, sets, reps, rest_time_seconds: rt ?? null, sort_order: newSortOrder }), 'workout_plans insert');
+      return { ...prev, [dateStr]: [...today, newItem] };
     });
-    if (isTelegram) supaSafe(supabase.from('workout_plans').insert({ id: wid, plan_date: dateStr, exercise_id: exercise.id, name: exercise.name, target_muscle_group: exercise.targetMuscleGroup ?? null, sets, reps, rest_time_seconds: rt ?? null, sort_order: (plannedWorkouts[dateStr]?.length ?? 0) }), 'workout_plans insert');
   };
 
   const removeExerciseFromPlan = (dateStr: string, wid: string) => {
@@ -342,7 +344,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const resetUserStats = () => {
     setDailyDurations({}); setCompletedSets({}); setActualExerciseRests({});
     setUserStats({ totalWorkoutSeconds: 0, totalSets: 0, currentStreak: 0, achievements: {} });
-    if (isTelegram) { supaSafe(supabase.from('workout_sessions').delete().neq('id', '00000000-0000-0000-0000-000000000000'), 'reset workout_sessions'); supaSafe(supabase.from('completed_sets').delete().neq('id', '00000000-0000-0000-0000-000000000000'), 'reset completed_sets'); supaSafe(supabase.from('exercise_rests').delete().neq('id', '00000000-0000-0000-0000-000000000000'), 'reset exercise_rests'); }
+    if (isTelegram) { supaSafe(supabase.from('workout_sessions').delete(), 'reset workout_sessions'); supaSafe(supabase.from('completed_sets').delete(), 'reset completed_sets'); supaSafe(supabase.from('exercise_rests').delete(), 'reset exercise_rests'); }
   };
 
   return (
