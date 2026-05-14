@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { format, subDays, differenceInCalendarDays, parseISO } from 'date-fns';
+import { format, differenceInCalendarDays, parseISO } from 'date-fns';
 import { TabName, BaseExercise, WorkoutExercise, PlannedWorkoutsDict, CompletedSetsDict, UserStats } from '../types';
 import { supabase, authViaTelegram } from '../lib/supabase';
 
@@ -64,18 +64,7 @@ const defaultExercises: BaseExercise[] = [
   { id: '3', name: 'Подтягивания', targetMuscleGroup: 'Спина', defaultSets: 3, defaultReps: 8, defaultRestTimeSeconds: 90 },
 ];
 
-const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd');
-const mockPlanned: PlannedWorkoutsDict = {
-  [yesterdayStr]: [
-    { id: '1', name: 'Жим лежа', targetMuscleGroup: 'Грудь', workoutId: 'w1', sets: 3, reps: 10, restTimeSeconds: 90 },
-    { id: '2', name: 'Приседания со штангой', targetMuscleGroup: 'Ноги', workoutId: 'w2', sets: 3, reps: 12, restTimeSeconds: 120 },
-  ]
-};
-const mockSets: CompletedSetsDict = {
-  [`${yesterdayStr}_w1_0`]: true, [`${yesterdayStr}_w1_1`]: true, [`${yesterdayStr}_w1_2`]: true,
-  [`${yesterdayStr}_w2_0`]: true, [`${yesterdayStr}_w2_1`]: true, [`${yesterdayStr}_w2_2`]: true,
-};
-const mockDurations = { [yesterdayStr]: 45 * 60 };
+// Dev-режим: чистое состояние, без фейковых тренировок
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -122,9 +111,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const initDev = useCallback(() => {
     setExerciseDb(defaultExercises);
-    setPlannedWorkouts(mockPlanned);
-    setCompletedSets(mockSets);
-    setDailyDurations(mockDurations);
+    setPlannedWorkouts({});
+    setCompletedSets({});
+    setDailyDurations({});
     setLoading(false);
   }, []);
 
@@ -200,8 +189,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      if (window.Telegram?.WebApp?.initData) {
-        const result = await authViaTelegram(window.Telegram.WebApp.initData);
+      const isTelegramWebView = !!(window.Telegram?.WebApp || (window as any).TelegramWebviewProxy);
+      if (isTelegramWebView) {
+        const initData = window.Telegram?.WebApp?.initData || '';
+        if (!initData) {
+          setIsTelegram(true);
+          setLoadError('Не удалось получить данные авторизации Telegram. Откройте приложение через кнопку в боте @ZadroTubikBot.');
+          setLoading(false);
+          return;
+        }
+        const result = await authViaTelegram(initData);
         if (result) {
           setIsTelegram(true);
           setUserProfile({ first_name: result.first_name, username: result.username, photo_url: result.photo_url });
@@ -209,12 +206,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           await loadFromSupabase();
           return;
         }
-        // В Telegram WebView, но авторизация не прошла — показываем ошибку
         setIsTelegram(true);
-        setLoadError('Ошибка авторизации через Telegram. Попробуйте перезапустить Mini App.');
+        setLoadError('Ошибка авторизации через Telegram. Убедитесь, что Edge Function развёрнута в Supabase, и попробуйте снова.');
         setLoading(false);
         return;
       }
+      // Не Telegram — dev/demo режим с чистыми данными
       initDev();
     })();
   }, [loadFromSupabase, initDev]);
