@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { format, addDays, subDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useAppContext } from '../../context/AppContext';
@@ -6,7 +6,8 @@ import { cn } from '../../lib/utils';
 import { Activity, Calendar as CalendarIcon, PieChart, Play, Pause, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { WorkoutTracker } from '../fitness/WorkoutTracker';
 import { WorkoutConstructor } from '../fitness/WorkoutConstructor';
-import { FitnessStats } from '../fitness/FitnessStats';
+
+const FitnessStats = lazy(() => import('../fitness/FitnessStats').then(m => ({ default: m.FitnessStats })));
 
 function HeaderControls() {
   const { 
@@ -222,7 +223,16 @@ export function FitnessTab() {
       <div className="px-2">
         {activeSubTab === 'tracker' && <WorkoutTracker />}
         {activeSubTab === 'constructor' && <WorkoutConstructor />}
-        {activeSubTab === 'stats' && <FitnessStats />}
+        {activeSubTab === 'stats' && (
+          <Suspense fallback={
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="w-8 h-8 border-4 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin mb-3" />
+              <p className="text-sm text-slate-400 animate-pulse">Загрузка статистики...</p>
+            </div>
+          }>
+            <FitnessStats />
+          </Suspense>
+        )}
       </div>
       
     </div>

@@ -123,55 +123,65 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const loadFromSupabase = useCallback(async () => {
     try {
-    const { data: exercises } = await supabase.from('exercises').select('*').order('created_at');
-    setExerciseDb((exercises ?? []).map((r: any) => ({
-      id: r.id, name: r.name,
-      targetMuscleGroup: r.target_muscle_group,
-      defaultSets: r.default_sets, defaultReps: r.default_reps,
-      defaultRestTimeSeconds: r.default_rest_time_seconds,
-    })));
+      const [
+        { data: exercises },
+        { data: wp },
+        { data: cs },
+        { data: ws },
+        { data: er },
+        { data: ua },
+      ] = await Promise.all([
+        supabase.from('exercises').select('*').order('created_at'),
+        supabase.from('workout_plans').select('*').order('sort_order'),
+        supabase.from('completed_sets').select('*'),
+        supabase.from('workout_sessions').select('plan_date, duration_seconds'),
+        supabase.from('exercise_rests').select('*'),
+        supabase.from('user_achievements').select('*'),
+      ]);
 
-    const { data: wp } = await supabase.from('workout_plans').select('*').order('sort_order');
-    const plans: PlannedWorkoutsDict = {};
-    for (const r of (wp ?? []) as any[]) {
-      if (!plans[r.plan_date]) plans[r.plan_date] = [];
-      plans[r.plan_date].push({
-        id: r.exercise_id ?? '', name: r.name,
+      setExerciseDb((exercises ?? []).map((r: any) => ({
+        id: r.id, name: r.name,
         targetMuscleGroup: r.target_muscle_group,
-        defaultSets: undefined, defaultReps: undefined, defaultRestTimeSeconds: undefined,
-        workoutId: r.id, sets: r.sets, reps: r.reps, restTimeSeconds: r.rest_time_seconds,
-      });
-    }
-    setPlannedWorkouts(plans);
+        defaultSets: r.default_sets, defaultReps: r.default_reps,
+        defaultRestTimeSeconds: r.default_rest_time_seconds,
+      })));
 
-    const { data: cs } = await supabase.from('completed_sets').select('*');
-    const sets: CompletedSetsDict = {};
-    for (const r of (cs ?? []) as any[]) {
-      sets[`${r.plan_date}_${r.workout_plan_id}_${r.set_index}`] = true;
-    }
-    setCompletedSets(sets);
+      const plans: PlannedWorkoutsDict = {};
+      for (const r of (wp ?? []) as any[]) {
+        if (!plans[r.plan_date]) plans[r.plan_date] = [];
+        plans[r.plan_date].push({
+          id: r.exercise_id ?? '', name: r.name,
+          targetMuscleGroup: r.target_muscle_group,
+          defaultSets: undefined, defaultReps: undefined, defaultRestTimeSeconds: undefined,
+          workoutId: r.id, sets: r.sets, reps: r.reps, restTimeSeconds: r.rest_time_seconds,
+        });
+      }
+      setPlannedWorkouts(plans);
 
-    const { data: ws } = await supabase.from('workout_sessions').select('plan_date, duration_seconds');
-    const durations: Record<string, number> = {};
-    for (const r of (ws ?? []) as any[]) {
-      durations[r.plan_date] = (durations[r.plan_date] ?? 0) + r.duration_seconds;
-    }
-    setDailyDurations(durations);
+      const sets: CompletedSetsDict = {};
+      for (const r of (cs ?? []) as any[]) {
+        sets[`${r.plan_date}_${r.workout_plan_id}_${r.set_index}`] = true;
+      }
+      setCompletedSets(sets);
 
-    const { data: er } = await supabase.from('exercise_rests').select('*');
-    const rests: Record<string, number> = {};
-    for (const r of (er ?? []) as any[]) {
-      const d = format(new Date(r.recorded_at), 'yyyy-MM-dd');
-      rests[`${d}_${r.workout_plan_id}`] = (rests[`${d}_${r.workout_plan_id}`] ?? 0) + r.actual_rest_seconds;
-    }
-    setActualExerciseRests(rests);
+      const durations: Record<string, number> = {};
+      for (const r of (ws ?? []) as any[]) {
+        durations[r.plan_date] = (durations[r.plan_date] ?? 0) + r.duration_seconds;
+      }
+      setDailyDurations(durations);
 
-    const { data: ua } = await supabase.from('user_achievements').select('*');
-    const ach: Record<string, number> = {};
-    for (const r of (ua ?? []) as any[]) { ach[r.achievement_type] = new Date(r.unlocked_at).getTime(); }
-    setUserStats(prev => ({ ...prev, achievements: ach }));
+      const rests: Record<string, number> = {};
+      for (const r of (er ?? []) as any[]) {
+        const d = format(new Date(r.recorded_at), 'yyyy-MM-dd');
+        rests[`${d}_${r.workout_plan_id}`] = (rests[`${d}_${r.workout_plan_id}`] ?? 0) + r.actual_rest_seconds;
+      }
+      setActualExerciseRests(rests);
 
-    setLoading(false);
+      const ach: Record<string, number> = {};
+      for (const r of (ua ?? []) as any[]) { ach[r.achievement_type] = new Date(r.unlocked_at).getTime(); }
+      setUserStats(prev => ({ ...prev, achievements: ach }));
+
+      setLoading(false);
     } catch (err) {
       console.error('Failed to load from Supabase:', err);
       setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить данные');
