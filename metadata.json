@@ -1,0 +1,6 @@
+{
+  "name": "ZTrainer",
+  "description": "A neon cyberpunk Fitness PWA for Telegram with smart timers, workout constructor, and statistics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

@@ -1,0 +1,11 @@
+{
+  "name": "ZTrainer",
+  "short_name": "ZTrainer",
+  "description": "Неоновый фитнес-трекер с умными таймерами, конструктором тренировок и статистикой",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#06b6d4",
+  "orientation": "portrait",
+  "icons": []
+}
