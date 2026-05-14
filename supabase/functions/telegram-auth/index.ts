@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts";
 
 const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
 
@@ -12,10 +11,22 @@ interface InitDataUser {
   photo_url?: string;
 }
 
+function corsHeaders(origin = "*") {
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "apikey, x-client-info, content-type, authorization",
+    "Content-Type": "application/json",
+  };
+}
+
 function parseInitData(initData: string): Record<string, string> {
   const map: Record<string, string> = {};
   for (const pair of initData.split("&")) {
-    const [key, value] = pair.split("=");
+    const idx = pair.indexOf("=");
+    if (idx === -1) continue;
+    const key = pair.slice(0, idx);
+    const value = pair.slice(idx + 1);
     map[key] = decodeURIComponent(value);
   }
   return map;
@@ -64,38 +75,63 @@ async function validateInitData(initData: string): Promise<boolean> {
   return hex === hash;
 }
 
+/** Детерминированный пароль — только Edge Function знает BOT_TOKEN */
+async function derivePassword(telegramId: number, secret: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(String(telegramId))
+  );
+  return Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders() });
+  }
+
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "POST required" }), { status: 405 });
+    return new Response(JSON.stringify({ error: "POST required" }), { status: 405, headers: corsHeaders() });
   }
 
   try {
     const { initData } = await req.json();
 
     if (!initData) {
-      return new Response(JSON.stringify({ error: "initData is required" }), { status: 400 });
+      return new Response(JSON.stringify({ error: "initData is required" }), { status: 400, headers: corsHeaders() });
     }
 
     const valid = await validateInitData(initData);
     if (!valid) {
-      return new Response(JSON.stringify({ error: "Invalid initData" }), { status: 401 });
+      return new Response(JSON.stringify({ error: "Invalid initData" }), { status: 401, headers: corsHeaders() });
     }
 
     const params = parseInitData(initData);
     const userStr = params.user;
     if (!userStr) {
-      return new Response(JSON.stringify({ error: "No user in initData" }), { status: 400 });
+      return new Response(JSON.stringify({ error: "No user in initData" }), { status: 400, headers: corsHeaders() });
     }
 
     const user: InitDataUser = JSON.parse(userStr);
     const email = `tg_${user.id}@telegram.local`;
+    const password = await derivePassword(user.id, BOT_TOKEN);
 
     const supabase = createClient(
       Deno.env.get("SB_URL")!,
       Deno.env.get("SB_SERVICE_ROLE_KEY")!
     );
 
-    // 1. Найти или создать auth.users запись
+    // 1. Проверить, есть ли уже пользователь с таким telegram_id
     const { data: existingUsers } = await supabase.auth.admin.listUsers();
     const existing = existingUsers?.users?.find(
       (u) => u.user_metadata?.telegram_id === user.id
@@ -105,11 +141,19 @@ serve(async (req: Request) => {
 
     if (existing) {
       authUserId = existing.id;
+      // Миграция: обновляем пароль на актуальный (на случай если раньше был случайный)
+      const { error: updateErr } = await supabase.auth.admin.updateUserById(authUserId, {
+        password,
+        email_confirm: true,
+      });
+      if (updateErr) {
+        console.error("updateUser password error:", updateErr);
+      }
     } else {
       const { data: newUser, error: createErr } = await supabase.auth.admin.createUser({
         email,
         email_confirm: true,
-        password: crypto.randomUUID() + crypto.randomUUID(),
+        password,
         user_metadata: {
           telegram_id: user.id,
           first_name: user.first_name ?? "",
@@ -121,13 +165,13 @@ serve(async (req: Request) => {
         console.error("createUser error:", createErr);
         return new Response(
           JSON.stringify({ error: "Failed to create user" }),
-          { status: 500 }
+          { status: 500, headers: corsHeaders() }
         );
       }
       authUserId = newUser.user.id;
     }
 
-    // 2. Upsert в profiles
+    // 2. Upsert профиля
     await supabase.from("profiles").upsert({
       id: authUserId,
       telegram_id: user.id,
@@ -137,40 +181,37 @@ serve(async (req: Request) => {
       photo_url: user.photo_url ?? null,
     });
 
-    // 3. Выдать access_token клиенту
-    const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
-      type: "magiclink",
+    // 3. Авторизоваться — получаем валидную сессию
+    const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
       email,
+      password,
     });
 
-    if (linkErr || !linkData?.properties?.access_token) {
+    if (signInErr || !signInData.session) {
+      console.error("signIn error:", signInErr);
       return new Response(
-        JSON.stringify({
-          profile_id: authUserId,
-          telegram_id: user.id,
-          first_name: user.first_name,
-          username: user.username,
-        }),
-        { headers: { "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Authentication failed" }),
+        { status: 500, headers: corsHeaders() }
       );
     }
 
     return new Response(
       JSON.stringify({
-        access_token: linkData.properties.access_token,
-        refresh_token: linkData.properties.refresh_token,
+        access_token: signInData.session.access_token,
+        refresh_token: signInData.session.refresh_token,
+        expires_in: signInData.session.expires_in,
         profile_id: authUserId,
         telegram_id: user.id,
         first_name: user.first_name,
         username: user.username,
       }),
-      { headers: { "Content-Type": "application/json" } }
+      { headers: corsHeaders() }
     );
   } catch (err) {
     console.error("Unexpected error:", err);
     return new Response(
       JSON.stringify({ error: "Internal server error" }),
-      { status: 500 }
+      { status: 500, headers: corsHeaders() }
     );
   }
 });

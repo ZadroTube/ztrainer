@@ -183,7 +183,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       if (window.Telegram?.WebApp?.initData) {
         const result = await authViaTelegram(window.Telegram.WebApp.initData);
-        if (result) { setIsTelegram(true); setLoadError(null); await loadFromSupabase(); return; }
+        if (result) {
+          setIsTelegram(true);
+          setLoadError(null);
+          await loadFromSupabase();
+          return;
+        }
+        // В Telegram WebView, но авторизация не прошла — показываем ошибку
+        setIsTelegram(true);
+        setLoadError('Ошибка авторизации через Telegram. Попробуйте перезапустить Mini App.');
+        setLoading(false);
+        return;
       }
       initDev();
     })();

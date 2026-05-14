@@ -21,16 +21,13 @@ export async function authViaTelegram(initData: string) {
     body: { initData },
   });
 
-  if (error || !data) return null;
+  if (error || !data?.access_token || !data?.refresh_token) return null;
 
-  // Если Edge Function вернула токен — ставим сессию.
-  // После этого все запросы автоматически фильтруются RLS по auth.uid().
-  if (data.access_token && data.refresh_token) {
-    await supabase.auth.setSession({
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-    });
-  }
+  // После setSession() все запросы автоматически фильтруются RLS по auth.uid().
+  await supabase.auth.setSession({
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+  });
 
   return data;
 }
