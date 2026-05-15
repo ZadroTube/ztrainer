@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { authViaTelegramWidget } from '@/lib/supabase';
-import { LogIn } from 'lucide-react';
+import { LogIn, ExternalLink } from 'lucide-react';
 
 interface LoginScreenProps {
   onAuthSuccess: (data: { first_name?: string; username?: string; photo_url?: string }) => void;
@@ -22,11 +22,20 @@ declare global {
   }
 }
 
+const PRODUCTION_URL = 'https://ztrainerz.netlify.app';
+
+function isLocalhost() {
+  return location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+}
+
 export function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
   const [authenticating, setAuthenticating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const local = isLocalhost();
 
   useEffect(() => {
+    if (local) return;
+
     window.onTelegramAuth = async (user: WidgetUser) => {
       setAuthenticating(true);
       setError(null);
@@ -72,7 +81,7 @@ export function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
     }
 
     return () => { window.onTelegramAuth = undefined; };
-  }, [onAuthSuccess]);
+  }, [onAuthSuccess, local]);
 
   return (
     <div className="h-screen w-full max-w-md mx-auto flex flex-col items-center justify-center bg-slate-950 text-white p-6">
@@ -91,6 +100,21 @@ export function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
           <div className="flex flex-col items-center gap-3">
             <div className="w-10 h-10 border-4 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin" />
             <p className="text-sm text-slate-400">Авторизация...</p>
+          </div>
+        ) : local ? (
+          <div className="flex flex-col items-center gap-4">
+            <div className="bg-yellow-500/15 border border-yellow-500/30 text-yellow-300 text-sm px-4 py-3 rounded-xl text-center max-w-xs">
+              Telegram Login Widget не работает на localhost. Откройте приложение на рабочем домене.
+            </div>
+            <a
+              href={PRODUCTION_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-6 py-3 bg-cyan-500 text-black font-bold rounded-xl hover:bg-cyan-400 active:scale-95 transition-all"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Открыть ztrainerz.netlify.app
+            </a>
           </div>
         ) : (
           <div id="tg-widget-container" className="mb-4" />
