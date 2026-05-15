@@ -2,7 +2,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN");
-const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "https://ztrainerz.netlify.app";
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGIN") || "https://ztrainerz.netlify.app")
+  .split(",")
+  .map(o => o.trim());
 
 if (!BOT_TOKEN) {
   console.error("FATAL: TELEGRAM_BOT_TOKEN is not set in Edge Function secrets");
@@ -17,13 +19,18 @@ interface TelegramUser {
 }
 
 // ---------------------------------------------------------------------------
-// CORS: restrict to known origin (set ALLOWED_ORIGIN secret to override).
+// CORS: allow configured origins + Telegram Web App origins.
 // ---------------------------------------------------------------------------
+const TELEGRAM_ORIGINS = [
+  "https://web.telegram.org",
+  "https://webk.telegram.org",
+  "https://webz.telegram.org",
+];
+
 function corsHeaders(requestOrigin?: string | null) {
-  // Only allow the configured origin. For non-browser clients (origin is null)
-  // we still return the header so Supabase client SDK works, but browsers from
-  // other origins will be blocked by the browser's CORS enforcement.
-  const allowedOrigin = requestOrigin === ALLOWED_ORIGIN ? ALLOWED_ORIGIN : ALLOWED_ORIGIN;
+  const origin = requestOrigin || ALLOWED_ORIGINS[0];
+  const allAllowed = [...ALLOWED_ORIGINS, ...TELEGRAM_ORIGINS];
+  const allowedOrigin = allAllowed.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -37,7 +44,8 @@ function corsHeaders(requestOrigin?: string | null) {
 function isOriginAllowed(requestOrigin: string | null): boolean {
   // Non-browser clients send no Origin header — allow them (they bypass CORS anyway).
   if (!requestOrigin) return true;
-  return requestOrigin === ALLOWED_ORIGIN;
+  const allAllowed = [...ALLOWED_ORIGINS, ...TELEGRAM_ORIGINS];
+  return allAllowed.includes(requestOrigin);
 }
 
 // ---------------------------------------------------------------------------

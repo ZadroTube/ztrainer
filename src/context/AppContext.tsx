@@ -342,10 +342,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         const tgWebApp = window.Telegram?.WebApp;
         const tgProxy = (window as any).TelegramWebviewProxy;
-        const isTelegramWebView = !!(tgWebApp || tgProxy);
+        // Detect real Telegram environment: TelegramWebviewProxy is injected by
+        // the native Telegram client (not by the SDK script we load ourselves).
+        // Also check if initData is non-empty — the SDK always creates
+        // window.Telegram.WebApp, but initData is only populated inside Telegram.
+        const initData = tgWebApp?.initData || '';
+        const isTelegramWebView = !!(tgProxy || initData);
 
         if (isTelegramWebView) {
-          const initData = tgWebApp?.initData || '';
           if (!initData) {
             setIsTelegram(true);
             const debug = [
