@@ -91,19 +91,19 @@ async function validateLoginWidgetAuth(authData: string): Promise<{ valid: boole
   return hex === hash ? { valid: true } : { valid: false, error: "Invalid signature" };
 }
 
-async function derivePassword(telegramId: number, secret: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw", encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(String(telegramId)));
-  return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
+// Generate a cryptographically random one-time password. We set it on the
+// auth.users row right before signInWithPassword and never persist it. This
+// avoids the risk of a deterministic password being computable from a leaked
+// BOT_TOKEN.
+function generateOneTimePassword(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 async function authenticateUser(user: TelegramUser, supabase: ReturnType<typeof createClient>) {
   const email = `tg_${user.id}@telegram.local`;
-  const password = await derivePassword(user.id, BOT_TOKEN);
+  const password = generateOneTimePassword();
 
   const { data: existingProfile } = await supabase
     .from("profiles")

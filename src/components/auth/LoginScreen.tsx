@@ -22,8 +22,6 @@ declare global {
   }
 }
 
-const PRODUCTION_URL = 'https://ztrainerz.netlify.app';
-
 function isLocalhost() {
   return location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 }
