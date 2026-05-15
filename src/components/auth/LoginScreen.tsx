@@ -55,12 +55,20 @@ export function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
             photo_url: result.photo_url,
           });
         } else {
-          // Re-invoke to get error details for display
-          const { data: rawData, error: rawErr } = await (await import('@/lib/supabase')).supabase.functions.invoke("telegram-auth", {
-            body: { authData: params.toString() },
+          // Direct fetch to read response body for diagnostics
+          const url = import.meta.env.VITE_SUPABASE_URL as string;
+          const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+          const r = await fetch(`${url}/functions/v1/telegram-auth`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': key,
+              'Authorization': `Bearer ${key}`,
+            },
+            body: JSON.stringify({ authData: params.toString() }),
           });
-          const detail = rawErr ? String(rawErr) : JSON.stringify(rawData);
-          setError(`Ошибка авторизации. Detail: ${detail}`);
+          const text = await r.text();
+          setError(`Ошибка ${r.status}: ${text.substring(0, 200)}`);
         }
       } catch (e) {
         setError(`Ошибка соединения: ${e instanceof Error ? e.message : String(e)}`);

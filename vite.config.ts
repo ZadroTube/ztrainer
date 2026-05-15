@@ -11,6 +11,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,svg,ico,woff2}'],
         // Exclude Supabase auth and Edge Functions from caching entirely.
         // These endpoints return user-specific sessions/tokens that must
