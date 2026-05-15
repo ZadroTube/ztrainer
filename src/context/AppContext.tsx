@@ -414,38 +414,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const finalStreak = totalSetsCompleted > 0 ? Math.max(streak, 1) : 0;
 
     const now = Date.now();
-    const newlyUnlocked: Record<string, number> = {};
+    // We use a ref to communicate newly-unlocked achievements from inside the
+    // functional updater to the persistence logic outside. This avoids the
+    // StrictMode double-invocation race where a closure-captured mutable object
+    // could end up empty on the second invocation.
+    const newlyUnlockedRef: { current: Record<string, number> } = { current: {} };
 
     setUserStats(prev => {
-      // Recompute new achievements based on the CURRENT (prev) achievements set,
-      // not on a stale closure value. This avoids the render loop entirely.
-      // Idempotent: if StrictMode runs the updater twice, newlyUnlocked ends up
-      // with the same keys (we only set values that aren't already in prev).
-      if (totalSetsCompleted > 0 && !prev.achievements['first_workout']) newlyUnlocked['first_workout'] = now;
-      if (finalStreak >= 3 && !prev.achievements['streak_3']) newlyUnlocked['streak_3'] = now;
-      if (finalStreak >= 7 && !prev.achievements['streak_7']) newlyUnlocked['streak_7'] = now;
-      if (totalSeconds >= 5 * 3600 && !prev.achievements['time_5h']) newlyUnlocked['time_5h'] = now;
-      if (totalSetsCompleted >= 100 && !prev.achievements['volume_100']) newlyUnlocked['volume_100'] = now;
+      const unlocked: Record<string, number> = {};
+      if (totalSetsCompleted > 0 && !prev.achievements['first_workout']) unlocked['first_workout'] = now;
+      if (finalStreak >= 3 && !prev.achievements['streak_3']) unlocked['streak_3'] = now;
+      if (finalStreak >= 7 && !prev.achievements['streak_7']) unlocked['streak_7'] = now;
+      if (totalSeconds >= 5 * 3600 && !prev.achievements['time_5h']) unlocked['time_5h'] = now;
+      if (totalSetsCompleted >= 100 && !prev.achievements['volume_100']) unlocked['volume_100'] = now;
 
       const noStatChange =
         prev.totalWorkoutSeconds === totalSeconds &&
         prev.totalSets === totalSetsCompleted &&
         prev.currentStreak === finalStreak;
-      const noAchievementChange = Object.keys(newlyUnlocked).length === 0;
+      const noAchievementChange = Object.keys(unlocked).length === 0;
 
       // Bail out: nothing changed → return same reference, no re-render, no loop.
       if (noStatChange && noAchievementChange) return prev;
+
+      // Store the final unlocked set for persistence after the updater completes.
+      newlyUnlockedRef.current = unlocked;
 
       return {
         totalWorkoutSeconds: totalSeconds,
         totalSets: totalSetsCompleted,
         currentStreak: finalStreak,
-        achievements: noAchievementChange ? prev.achievements : { ...prev.achievements, ...newlyUnlocked },
+        achievements: noAchievementChange ? prev.achievements : { ...prev.achievements, ...unlocked },
       };
     });
 
-    // Persist newly unlocked achievements (computed above into newlyUnlocked).
-    for (const [type, time] of Object.entries(newlyUnlocked)) {
+    // Persist newly unlocked achievements. We read from the ref which was
+    // populated by the last updater invocation (the one React actually committed).
+    for (const [type, time] of Object.entries(newlyUnlockedRef.current)) {
       supaSafe(
         supabase.from('user_achievements').upsert(
           { achievement_type: type, unlocked_at: new Date(time).toISOString() },

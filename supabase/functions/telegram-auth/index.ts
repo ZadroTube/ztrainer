@@ -20,14 +20,24 @@ interface TelegramUser {
 // CORS: restrict to known origin (set ALLOWED_ORIGIN secret to override).
 // ---------------------------------------------------------------------------
 function corsHeaders(requestOrigin?: string | null) {
-  // Allow the configured origin, or echo back the request origin if it matches.
-  const origin = (requestOrigin === ALLOWED_ORIGIN) ? ALLOWED_ORIGIN : ALLOWED_ORIGIN;
+  // Only allow the configured origin. For non-browser clients (origin is null)
+  // we still return the header so Supabase client SDK works, but browsers from
+  // other origins will be blocked by the browser's CORS enforcement.
+  const allowedOrigin = requestOrigin === ALLOWED_ORIGIN ? ALLOWED_ORIGIN : ALLOWED_ORIGIN;
   return {
-    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "apikey, x-client-info, content-type, authorization",
+    "Access-Control-Allow-Credentials": "true",
     "Content-Type": "application/json",
   };
+}
+
+// Reject requests from disallowed browser origins (preflight already handled).
+function isOriginAllowed(requestOrigin: string | null): boolean {
+  // Non-browser clients send no Origin header — allow them (they bypass CORS anyway).
+  if (!requestOrigin) return true;
+  return requestOrigin === ALLOWED_ORIGIN;
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +232,11 @@ serve(async (req: Request) => {
 
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "POST required" }), { status: 405, headers: corsHeaders(reqOrigin) });
+  }
+
+  // Reject cross-origin browser requests from non-allowed domains.
+  if (!isOriginAllowed(reqOrigin)) {
+    return new Response(JSON.stringify({ error: "Origin not allowed" }), { status: 403, headers: corsHeaders(reqOrigin) });
   }
 
   try {
