@@ -255,7 +255,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const since = format(subDays(new Date(), 60), 'yyyy-MM-dd');
       const [{ data: exercises }, { data: wp }, { data: cs }, { data: ws }, { data: er }, { data: ua }] = await Promise.all([
-        supabase.from('exercises').select('*').order('created_at'),
+        supabase.from('exercises').select('*').is('archived_at', null).order('created_at'),
         supabase.from('workout_plans').select('*').gte('plan_date', since).order('sort_order'),
         supabase.from('completed_sets').select('*').gte('plan_date', since),
         supabase.from('workout_sessions').select('plan_date, duration_seconds').gte('plan_date', since),
@@ -537,7 +537,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
   const deleteExerciseFromDb = (id: string) => {
-    setExerciseDb(prev => { const removed = prev.find(e => e.id === id); const next = prev.filter(e => e.id !== id); if (removed) { supaSafe(supabase.from('exercises').delete().eq('id', id), 'exercises delete', () => setExerciseDb(p => [...p, removed!])); } return next; });
+    // Soft-delete: mark as archived instead of hard-deleting, so that
+    // workout_plans.exercise_id references and exercise history remain intact.
+    setExerciseDb(prev => {
+      const removed = prev.find(e => e.id === id);
+      const next = prev.filter(e => e.id !== id);
+      if (removed) {
+        supaSafe(
+          supabase.from('exercises').update({ archived_at: new Date().toISOString() }).eq('id', id),
+          'exercises archive',
+          () => setExerciseDb(p => [...p, removed]),
+        );
+      }
+      return next;
+    });
   };
 
   const addExerciseToPlan = (dateStr: string, exercise: BaseExercise, sets: number, reps: number, rt?: number) => {
