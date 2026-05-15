@@ -131,8 +131,10 @@ async function validateLoginWidgetAuth(authData: string): Promise<{ valid: boole
   const checkString = buildCheckString(params);
 
   const encoder = new TextEncoder();
+  // Login Widget uses SHA-256 hash of bot token as the secret key
+  const tokenHash = await crypto.subtle.digest("SHA-256", encoder.encode(BOT_TOKEN));
   const secretKey = await crypto.subtle.importKey(
-    "raw", encoder.encode(BOT_TOKEN),
+    "raw", tokenHash,
     { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
   );
   const signature = await crypto.subtle.sign("HMAC", secretKey, encoder.encode(checkString));
