@@ -102,20 +102,15 @@ export function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
             <p className="text-sm text-slate-400">Авторизация...</p>
           </div>
         ) : local ? (
-          <div className="flex flex-col items-center gap-4">
-            <div className="bg-yellow-500/15 border border-yellow-500/30 text-yellow-300 text-sm px-4 py-3 rounded-xl text-center max-w-xs">
-              Telegram Login Widget не работает на localhost. Откройте приложение на рабочем домене.
-            </div>
-            <a
-              href={PRODUCTION_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 px-6 py-3 bg-cyan-500 text-black font-bold rounded-xl hover:bg-cyan-400 active:scale-95 transition-all"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Открыть ztrainerz.netlify.app
-            </a>
-          </div>
+          <a
+            href="https://t.me/ZadroTubikBot/ztrainerz"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-6 py-3 bg-cyan-500 text-black font-bold rounded-xl hover:bg-cyan-400 active:scale-95 transition-all"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Открыть в Telegram
+          </a>
         ) : (
           <div id="tg-widget-container" className="mb-4" />
         )}
