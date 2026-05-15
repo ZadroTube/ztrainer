@@ -55,10 +55,15 @@ export function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
             photo_url: result.photo_url,
           });
         } else {
-          setError('Ошибка авторизации. Попробуйте снова.');
+          // Re-invoke to get error details for display
+          const { data: rawData, error: rawErr } = await (await import('@/lib/supabase')).supabase.functions.invoke("telegram-auth", {
+            body: { authData: params.toString() },
+          });
+          const detail = rawErr ? String(rawErr) : JSON.stringify(rawData);
+          setError(`Ошибка авторизации. Detail: ${detail}`);
         }
-      } catch {
-        setError('Ошибка соединения с сервером.');
+      } catch (e) {
+        setError(`Ошибка соединения: ${e instanceof Error ? e.message : String(e)}`);
       } finally {
         setAuthenticating(false);
       }

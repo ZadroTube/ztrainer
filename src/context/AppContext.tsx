@@ -340,18 +340,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
           await supabase.auth.signOut();
         }
 
-        const tgWebApp = window.Telegram?.WebApp;
         const tgProxy = (window as any).TelegramWebviewProxy;
-        // Detect real Telegram environment: TelegramWebviewProxy is injected by
-        // the native Telegram client (not by the SDK script we load ourselves).
-        // Also check if initData is non-empty — the SDK always creates
-        // window.Telegram.WebApp, but initData is only populated inside Telegram.
-        const initData = tgWebApp?.initData || '';
-        const isTelegramWebView = !!(tgProxy || initData);
 
-        if (isTelegramWebView) {
+        // If we're inside Telegram (TelegramWebviewProxy exists), wait for SDK to load
+        if (tgProxy) {
+          // Wait up to 3 seconds for Telegram.WebApp.initData to become available
+          let initData = '';
+          for (let i = 0; i < 30; i++) {
+            initData = window.Telegram?.WebApp?.initData || '';
+            if (initData) break;
+            await new Promise(r => setTimeout(r, 100));
+          }
+
           if (!initData) {
             setIsTelegram(true);
+            const tgWebApp = window.Telegram?.WebApp;
             const debug = [
               `WebApp: ${!!tgWebApp}`,
               `Proxy: ${!!tgProxy}`,
@@ -372,7 +375,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             return;
           }
           setIsTelegram(true);
-          setLoadError('Ошибка авторизации через Telegram. Убедитесь, что Edge Function развёрнута в Supabase, и попробуйте снова.');
+          // Try to get more details about the failure
+          const { data: rawData, error: rawErr } = await supabase.functions.invoke("telegram-auth", {
+            body: { initData },
+          });
+          const errDetail = rawErr ? String(rawErr) : JSON.stringify(rawData);
+          setLoadError(`Ошибка авторизации через Telegram. Detail: ${errDetail}`);
           setLoading(false);
           return;
         }

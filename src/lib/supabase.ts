@@ -28,7 +28,10 @@ interface AuthResult {
 }
 
 async function handleAuthResponse(data: AuthResult | null, error: unknown) {
-  if (error || !data?.access_token || !data?.refresh_token) return null;
+  if (error || !data?.access_token || !data?.refresh_token) {
+    console.error('[Auth] handleAuthResponse failed:', { error, data });
+    return null;
+  }
 
   await supabase.auth.setSession({
     access_token: data.access_token,
