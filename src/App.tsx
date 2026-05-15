@@ -6,6 +6,7 @@
 import { AppProvider, useUIContext } from '@/context/AppContext';
 import { TabContainer } from '@/components/tabs/TabContainer';
 import { BottomNav } from '@/components/layout/BottomNav';
+import { OfflineIndicator } from '@/components/layout/OfflineIndicator';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { LoginScreen } from '@/components/auth/LoginScreen';
 import { AlertTriangle } from 'lucide-react';
@@ -44,6 +45,7 @@ function AppContent() {
 
   return (
     <div className="h-screen w-full max-w-md mx-auto relative flex flex-col bg-slate-900 overflow-hidden sm:border-x sm:border-slate-800/50">
+      <OfflineIndicator />
       <div className="glow-bg"></div>
       <div className="glow-bg-2"></div>
       <div className="relative z-10 flex flex-col h-full">

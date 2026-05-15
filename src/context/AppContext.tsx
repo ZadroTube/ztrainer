@@ -3,6 +3,12 @@ import { format, subDays, differenceInCalendarDays, parseISO } from 'date-fns';
 import { TabName, BaseExercise, WorkoutExercise, PlannedWorkoutsDict, CompletedSetsDict, UserStats } from '@/types';
 import { supabase, authViaTelegram } from '@/lib/supabase';
 
+// Type-narrowing for supabase fluent builders that resolve to { data, error }.
+type SupaResult = { data?: unknown; error?: { message?: string } | null };
+function isSupaResult(x: unknown): x is SupaResult {
+  return typeof x === 'object' && x !== null && 'error' in x;
+}
+
 export interface RestContext {
   type: 'set' | 'exercise';
   workoutId: string;
@@ -49,15 +55,48 @@ const defaultExercises: Omit<BaseExercise, 'id'>[] = [
   { name: 'Подтягивания', targetMuscleGroup: 'Спина', defaultSets: 3, defaultReps: 8, defaultRestTimeSeconds: 90 },
 ];
 
-let _setSyncError: ((msg: string | null) => void) | null = null;
+// History cache epoch. Subscribers (e.g. WorkoutConstructor) bump their caches
+// when this changes. Used to invalidate stale per-exercise history caches on
+// sign-out, reset, plan edits, etc. — without coupling them to the full
+// AppContext.
+let _historyCacheEpoch = 0;
+const historyCacheSubscribers = new Set<(epoch: number) => void>();
+export function getHistoryCacheEpoch(): number { return _historyCacheEpoch; }
+export function subscribeHistoryCache(fn: (epoch: number) => void): () => void {
+  historyCacheSubscribers.add(fn);
+  return () => { historyCacheSubscribers.delete(fn); };
+}
+function bumpHistoryCache() {
+  _historyCacheEpoch += 1;
+  historyCacheSubscribers.forEach(fn => fn(_historyCacheEpoch));
+}
 
-function supaSafe<T>(promise: PromiseLike<T>, label: string, rollback?: () => void) {
-  Promise.resolve(promise).catch((e: unknown) => {
-    console.error(`Supabase ${label} error:`, e);
-    _setSyncError?.(`Ошибка сохранения: ${label}`);
+// Subscribers receive sync error notifications. Using a Set + subscribe/unsubscribe
+// is safe under React StrictMode (double-mount), HMR, and unmount, unlike a single
+// module-level mutable reference.
+const errorSubscribers = new Set<(msg: string | null) => void>();
+function notifySyncError(msg: string | null) {
+  errorSubscribers.forEach(fn => fn(msg));
+}
+
+// Awaits the supabase result, checks the `error` field returned by PostgREST
+// (Supabase JS does NOT reject on HTTP errors), and rolls back optimistic
+// updates if anything went wrong.
+async function supaSafe<T>(promise: PromiseLike<T>, label: string, rollback?: () => void): Promise<void> {
+  try {
+    const result = await Promise.resolve(promise);
+    if (isSupaResult(result) && result.error) {
+      console.error(`Supabase ${label} error:`, result.error);
+      notifySyncError(`Ошибка сохранения: ${label}`);
+      rollback?.();
+      setTimeout(() => notifySyncError(null), 5000);
+    }
+  } catch (e: unknown) {
+    console.error(`Supabase ${label} threw:`, e);
+    notifySyncError(`Ошибка сохранения: ${label}`);
     rollback?.();
-    setTimeout(() => _setSyncError?.(null), 5000);
-  });
+    setTimeout(() => notifySyncError(null), 5000);
+  }
 }
 
 declare global {
@@ -135,7 +174,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
-  _setSyncError = setSyncError;
+
+  // Subscribe to global sync error notifications. Multiple providers / StrictMode
+  // double-mounts will register independently and clean up on unmount.
+  useEffect(() => {
+    errorSubscribers.add(setSyncError);
+    return () => {
+      errorSubscribers.delete(setSyncError);
+    };
+  }, []);
 
   const [activeTab, setActiveTab] = useState<TabName>('fitness');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -208,7 +255,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const since = format(subDays(new Date(), 60), 'yyyy-MM-dd');
       const [{ data: exercises }, { data: wp }, { data: cs }, { data: ws }, { data: er }, { data: ua }] = await Promise.all([
-        supabase.from('exercises').select('*').order('created_at'),
+        supabase.from('exercises').select('*').is('archived_at', null).order('created_at'),
         supabase.from('workout_plans').select('*').gte('plan_date', since).order('sort_order'),
         supabase.from('completed_sets').select('*').gte('plan_date', since),
         supabase.from('workout_sessions').select('plan_date, duration_seconds').gte('plan_date', since),
@@ -258,6 +305,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const ach: Record<string, number> = {};
       for (const r of (ua ?? []) as AchievementRow[]) { ach[r.achievement_type] = new Date(r.unlocked_at).getTime(); }
       setUserStats(prev => ({ ...prev, achievements: ach }));
+
+      // We just (re)loaded fresh data, possibly for a different user — drop any
+      // out-of-tree per-exercise history caches that may have been populated
+      // for the previous session.
+      bumpHistoryCache();
 
       setLoading(false);
     } catch (err) {
@@ -333,34 +385,81 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [ensureProfile, loadFromSupabase]);
 
   // --- Stats derivation ---
+  // IMPORTANT: this effect must NOT depend on userStats.achievements, otherwise
+  // it would re-run every time it mutates achievements and create a render loop.
+  // We use a functional setUserStats(prev => ...) so the latest value is always
+  // taken from React state, and we only enqueue a state update when something
+  // actually changed (deep-compared).
   useEffect(() => {
     let totalSeconds = 0;
     for (const d of Object.values(dailyDurations)) totalSeconds += d as number;
     const totalSetsCompleted = Object.values(completedSets).filter(v => v).length;
+
     if (!totalSetsCompleted && !totalSeconds) {
-      setUserStats(prev => ({ ...prev, totalWorkoutSeconds: 0, totalSets: 0, currentStreak: 0 }));
+      setUserStats(prev => {
+        if (prev.totalWorkoutSeconds === 0 && prev.totalSets === 0 && prev.currentStreak === 0) {
+          return prev;
+        }
+        return { ...prev, totalWorkoutSeconds: 0, totalSets: 0, currentStreak: 0 };
+      });
       return;
     }
+
     const activeDates = [...new Set(Object.keys(completedSets).map(k => k.split('_')[0]))].sort((a, b) => b.localeCompare(a));
     let streak = 0, cd = new Date();
     for (const ds of activeDates) {
       const diff = differenceInCalendarDays(cd, parseISO(ds));
       if (diff <= 1) { streak++; cd = parseISO(ds); } else break;
     }
-    const achievements = { ...userStats.achievements };
-    const now = Date.now();
-    if (totalSetsCompleted > 0 && !achievements['first_workout']) achievements['first_workout'] = now;
-    if (streak >= 3 && !achievements['streak_3']) achievements['streak_3'] = now;
-    if (streak >= 7 && !achievements['streak_7']) achievements['streak_7'] = now;
-    if (totalSeconds >= 5 * 3600 && !achievements['time_5h']) achievements['time_5h'] = now;
-    if (totalSetsCompleted >= 100 && !achievements['volume_100']) achievements['volume_100'] = now;
-    setUserStats({ totalWorkoutSeconds: totalSeconds, totalSets: totalSetsCompleted, currentStreak: totalSetsCompleted > 0 ? Math.max(streak, 1) : 0, achievements });
+    const finalStreak = totalSetsCompleted > 0 ? Math.max(streak, 1) : 0;
 
-    const newAchs = Object.entries(achievements).filter(([k]) => !userStats.achievements[k]);
-    for (const [type, time] of newAchs) {
-      supaSafe(supabase.from('user_achievements').upsert({ achievement_type: type, unlocked_at: new Date(time as number).toISOString() }, { onConflict: 'user_id, achievement_type' }), `achievement ${type}`);
+    const now = Date.now();
+    // We use a ref to communicate newly-unlocked achievements from inside the
+    // functional updater to the persistence logic outside. This avoids the
+    // StrictMode double-invocation race where a closure-captured mutable object
+    // could end up empty on the second invocation.
+    const newlyUnlockedRef: { current: Record<string, number> } = { current: {} };
+
+    setUserStats(prev => {
+      const unlocked: Record<string, number> = {};
+      if (totalSetsCompleted > 0 && !prev.achievements['first_workout']) unlocked['first_workout'] = now;
+      if (finalStreak >= 3 && !prev.achievements['streak_3']) unlocked['streak_3'] = now;
+      if (finalStreak >= 7 && !prev.achievements['streak_7']) unlocked['streak_7'] = now;
+      if (totalSeconds >= 5 * 3600 && !prev.achievements['time_5h']) unlocked['time_5h'] = now;
+      if (totalSetsCompleted >= 100 && !prev.achievements['volume_100']) unlocked['volume_100'] = now;
+
+      const noStatChange =
+        prev.totalWorkoutSeconds === totalSeconds &&
+        prev.totalSets === totalSetsCompleted &&
+        prev.currentStreak === finalStreak;
+      const noAchievementChange = Object.keys(unlocked).length === 0;
+
+      // Bail out: nothing changed → return same reference, no re-render, no loop.
+      if (noStatChange && noAchievementChange) return prev;
+
+      // Store the final unlocked set for persistence after the updater completes.
+      newlyUnlockedRef.current = unlocked;
+
+      return {
+        totalWorkoutSeconds: totalSeconds,
+        totalSets: totalSetsCompleted,
+        currentStreak: finalStreak,
+        achievements: noAchievementChange ? prev.achievements : { ...prev.achievements, ...unlocked },
+      };
+    });
+
+    // Persist newly unlocked achievements. We read from the ref which was
+    // populated by the last updater invocation (the one React actually committed).
+    for (const [type, time] of Object.entries(newlyUnlockedRef.current)) {
+      supaSafe(
+        supabase.from('user_achievements').upsert(
+          { achievement_type: type, unlocked_at: new Date(time).toISOString() },
+          { onConflict: 'user_id, achievement_type' },
+        ),
+        `achievement ${type}`,
+      );
     }
-  }, [completedSets, dailyDurations, userStats.achievements]);
+  }, [completedSets, dailyDurations]);
 
   // --- Timer logic ---
   const startWorkoutTimer = () => {
@@ -443,7 +542,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
   const deleteExerciseFromDb = (id: string) => {
-    setExerciseDb(prev => { const removed = prev.find(e => e.id === id); const next = prev.filter(e => e.id !== id); if (removed) { supaSafe(supabase.from('exercises').delete().eq('id', id), 'exercises delete', () => setExerciseDb(p => [...p, removed!])); } return next; });
+    // Soft-delete: mark as archived instead of hard-deleting, so that
+    // workout_plans.exercise_id references and exercise history remain intact.
+    setExerciseDb(prev => {
+      const removed = prev.find(e => e.id === id);
+      const next = prev.filter(e => e.id !== id);
+      if (removed) {
+        supaSafe(
+          supabase.from('exercises').update({ archived_at: new Date().toISOString() }).eq('id', id),
+          'exercises archive',
+          () => setExerciseDb(p => [...p, removed]),
+        );
+      }
+      return next;
+    });
   };
 
   const addExerciseToPlan = (dateStr: string, exercise: BaseExercise, sets: number, reps: number, rt?: number) => {
@@ -460,6 +572,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
       return { ...prev, [dateStr]: [...today, newItem] };
     });
+    // Plan changed → exercise history caches are now stale.
+    bumpHistoryCache();
   };
 
   const updatePlanExercise = (dateStr: string, wid: string, updates: Partial<Pick<WorkoutExercise, 'sets' | 'reps' | 'restTimeSeconds' | 'weightKg'>>) => {
@@ -473,6 +587,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (updates.restTimeSeconds !== undefined) sbUpdates.rest_time_seconds = updates.restTimeSeconds ?? null;
     if (updates.weightKg !== undefined) sbUpdates.weight_kg = updates.weightKg ?? null;
     supaSafe(supabase.from('workout_plans').update(sbUpdates).eq('id', wid), 'workout_plans update');
+    bumpHistoryCache();
   };
 
   const removeExerciseFromPlan = (dateStr: string, wid: string) => {
@@ -480,6 +595,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCompletedSets(prev => { const n = { ...prev }; for (const k of Object.keys(n)) { if (k.includes(wid)) delete n[k]; } return n; });
     supaSafe(supabase.from('workout_plans').delete().eq('id', wid), 'workout_plans delete');
     supaSafe(supabase.from('completed_sets').delete().eq('workout_plan_id', wid), 'completed_sets delete');
+    bumpHistoryCache();
   };
 
   const toggleSetCompletion = (dateStr: string, wid: string, si: number, done: boolean) => {
@@ -512,11 +628,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const resetUserStats = () => {
     setDailyDurations({}); setCompletedSets({}); setActualExerciseRests({}); setPlannedWorkouts({});
     setUserStats({ totalWorkoutSeconds: 0, totalSets: 0, currentStreak: 0, achievements: {} });
-    supaSafe(supabase.from('workout_sessions').delete(), 'reset workout_sessions');
-    supaSafe(supabase.from('completed_sets').delete(), 'reset completed_sets');
-    supaSafe(supabase.from('exercise_rests').delete(), 'reset exercise_rests');
-    supaSafe(supabase.from('workout_plans').delete(), 'reset workout_plans');
-    supaSafe(supabase.from('user_achievements').delete(), 'reset user_achievements');
+    // PostgREST refuses unconditional DELETE/UPDATE for safety — we add a
+    // tautological filter (id IS NOT NULL) to satisfy that requirement.
+    // RLS still scopes the operation to the current user_id = auth.uid().
+    supaSafe(supabase.from('workout_sessions').delete().not('id', 'is', null), 'reset workout_sessions');
+    supaSafe(supabase.from('completed_sets').delete().not('id', 'is', null), 'reset completed_sets');
+    supaSafe(supabase.from('exercise_rests').delete().not('id', 'is', null), 'reset exercise_rests');
+    supaSafe(supabase.from('workout_plans').delete().not('id', 'is', null), 'reset workout_plans');
+    supaSafe(supabase.from('user_achievements').delete().not('id', 'is', null), 'reset user_achievements');
+    // Bump cache epoch so any out-of-tree caches (e.g. exercise history in
+    // WorkoutConstructor) know to discard their entries.
+    bumpHistoryCache();
   };
 
   // --- Context values ---

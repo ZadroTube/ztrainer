@@ -1,7 +1,19 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+
+// Fail fast at module load if env is missing — better than a cryptic 401 later.
+if (!supabaseUrl || !supabaseAnonKey) {
+  const missing = [
+    !supabaseUrl && "VITE_SUPABASE_URL",
+    !supabaseAnonKey && "VITE_SUPABASE_ANON_KEY",
+  ].filter(Boolean).join(", ");
+  throw new Error(
+    `Supabase env vars missing: ${missing}. ` +
+    `Copy .env.example to .env.local and fill in your project values.`
+  );
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 

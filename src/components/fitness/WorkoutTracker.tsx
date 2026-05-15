@@ -7,11 +7,11 @@ import { cn } from '@/lib/utils';
 import { WorkoutExercise } from '@/types';
 import { InlineRestTimer } from './InlineRestTimer';
 
-const ExerciseCard: FC<{ exercise: WorkoutExercise, index: number, dateStr: string, isDiaryMode: boolean }> = ({ exercise, index, dateStr, isDiaryMode }) => {
+const ExerciseCard: FC<{ exercise: WorkoutExercise, dateStr: string, isDiaryMode: boolean }> = ({ exercise, dateStr, isDiaryMode }) => {
   const [expanded, setExpanded] = useState(!isDiaryMode);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { completedSets, toggleSetCompletion, actualExerciseRests, removeExerciseFromPlan } = useWorkoutData();
-  const { startRestTimer, restContext, startWorkoutTimer } = useTimerContext();
+  const { startRestTimer, restContext } = useTimerContext();
 
   // Helper to check if a specific set is done
   const isSetCompleted = (setIdx: number) => {
@@ -224,7 +224,6 @@ export function WorkoutTracker() {
           <ExerciseCard 
             key={ex.workoutId} 
             exercise={ex} 
-            index={idx}
             dateStr={dateStr}
             isDiaryMode={true}
           />
@@ -292,7 +291,6 @@ export function WorkoutTracker() {
         <div key={ex.workoutId} className="space-y-4">
           <ExerciseCard 
             exercise={ex} 
-            index={idx}
             dateStr={dateStr}
             isDiaryMode={false}
           />

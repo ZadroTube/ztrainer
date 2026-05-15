@@ -1,5 +1,6 @@
 import { PlaceholderTab } from '@/components/tabs/PlaceholderTab';
 import { FitnessTab } from '@/components/tabs/FitnessTab';
+import { ProfileTab } from '@/components/tabs/ProfileTab';
 import { useUIContext } from '@/context/AppContext';
 
 export function TabContainer() {
@@ -10,7 +11,7 @@ export function TabContainer() {
       {activeTab === 'home' && <PlaceholderTab title="Главная" />}
       {activeTab === 'fitness' && <FitnessTab />}
       {activeTab === 'cinema' && <PlaceholderTab title="Кино" />}
-      {activeTab === 'profile' && <PlaceholderTab title="Профиль" />}
+      {activeTab === 'profile' && <ProfileTab />}
     </main>
   );
 }

@@ -10,6 +10,9 @@ function playBeep() {
     if (!AudioCtx) return;
     if (!_audioCtx) _audioCtx = new AudioCtx();
     const ctx = _audioCtx;
+    // iOS Safari keeps AudioContext in 'suspended' state after creation until
+    // a user gesture resumes it. Calling resume() is a no-op if already running.
+    if (ctx.state === 'suspended') ctx.resume();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);

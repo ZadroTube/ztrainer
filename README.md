@@ -1,20 +1,59 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# ZTrainer
 
-# Run and deploy your AI Studio app
+Telegram Mini App для отслеживания тренировок: план на день, выполнение
+подходов с таймерами, статистика и достижения. Авторизация — через Telegram
+(Mini App `initData` или Login Widget). Стек: React 19 + Vite + TypeScript +
+Tailwind 4 + Supabase + PWA.
 
-This contains everything you need to run your app locally.
+## Архитектура
 
-View your app in AI Studio: https://ai.studio/apps/ef53b77a-2e00-4291-bb2a-9abc0d704f71
+- `src/context/AppContext.tsx` — три суб-контекста (UI / WorkoutData / Timer),
+  оптимистичные апдейты с rollback, Supabase-синк.
+- `src/components/fitness/*` — конструктор плана, тренировка, статистика,
+  inline-таймер отдыха.
+- `supabase/migrations/*.sql` — схема: `profiles`, `exercises`,
+  `workout_plans`, `completed_sets`, `workout_sessions`, `exercise_rests`,
+  `user_achievements`. RLS включён везде, политика `user_id = auth.uid()`.
+- `supabase/functions/telegram-auth/index.ts` — Edge Function: проверяет
+  HMAC-подпись Telegram, заводит/обновляет `auth.users`, возвращает session.
 
-## Run Locally
+## Локальная разработка
 
-**Prerequisites:**  Node.js
+Требования: Node.js 20+, аккаунт Supabase, бот в Telegram.
 
+```bash
+npm install
+cp .env.example .env.local
+# заполните VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY
+npm run dev
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Настройка Supabase
+
+1. Создать проект, выполнить миграции:
+   ```bash
+   supabase link --project-ref <REF>
+   supabase db push
+   ```
+2. **Отключить публичные signups** (Auth → Providers → Email: `Enable Sign
+   Ups = false`). Аккаунты создаёт только Edge Function через service-role.
+3. Развернуть Edge Function:
+   ```bash
+   supabase functions deploy telegram-auth --no-verify-jwt
+   supabase secrets set TELEGRAM_BOT_TOKEN=<bot_token>
+   supabase secrets set SB_URL=<project_url>
+   supabase secrets set SB_SERVICE_ROLE_KEY=<service_role_key>
+   ```
+
+## Настройка Telegram-бота
+
+- `@BotFather` → создать бота, получить `BOT_TOKEN`.
+- Установить Mini App URL: `/setmenubutton` или Web App URL в `/mybots`.
+- Для Login Widget — добавить домен через `/setdomain`.
+
+## Скрипты
+
+- `npm run dev` — Vite dev server.
+- `npm run build` — production-сборка.
+- `npm run lint` — TypeScript type-check (без ESLint, см. issue).
+- `npm run preview` — превью production-сборки.

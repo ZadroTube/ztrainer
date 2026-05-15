@@ -1,18 +1,17 @@
-import { useState, useRef, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { format } from 'date-fns';
-import { useWorkoutData, useUIContext } from '@/context/AppContext';
+import { useWorkoutData, useUIContext, subscribeHistoryCache, getHistoryCacheEpoch } from '@/context/AppContext';
 import { BaseExercise } from '@/types';
 import { Search, Plus, Trash2, Dumbbell, Edit2, X, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fetchExerciseHistory } from '@/lib/supabase';
 
-const historyCache = new Map<string, Array<{ plan_date: string; weight_kg: number | null; sets: number; reps: number }>>();
-
+type HistoryRow = { plan_date: string; weight_kg: number | null; sets: number; reps: number };
 
 export function WorkoutConstructor() {
   const { exerciseDb, addExerciseToDb, updateExerciseInDb, deleteExerciseFromDb, plannedWorkouts, addExerciseToPlan, updatePlanExercise, removeExerciseFromPlan } = useWorkoutData();
   const { selectedDate } = useUIContext();
-  
+
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
@@ -20,8 +19,22 @@ export function WorkoutConstructor() {
   const [deletePlanConfirmId, setDeletePlanConfirmId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
-  const [historyData, setHistoryData] = useState<Array<{ plan_date: string; weight_kg: number | null; sets: number; reps: number }>>([]);
+  const [historyData, setHistoryData] = useState<HistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Per-component history cache, scoped to a particular cache epoch coming from
+  // AppContext. When the epoch changes (sign-in/out, plan edit, reset, etc.)
+  // we drop the cache so we don't show another user's data or stale rows.
+  const historyCacheRef = useRef<Map<string, HistoryRow[]>>(new Map());
+  const cacheEpochRef = useRef<number>(getHistoryCacheEpoch());
+  useEffect(() => {
+    return subscribeHistoryCache((epoch) => {
+      if (epoch !== cacheEpochRef.current) {
+        cacheEpochRef.current = epoch;
+        historyCacheRef.current.clear();
+      }
+    });
+  }, []);
   const [exerciseForm, setExerciseForm] = useState({
     name: '',
     targetMuscleGroup: '',
@@ -93,16 +106,21 @@ export function WorkoutConstructor() {
   const toggleHistory = async (exId: string) => {
     if (historyId === exId) { setHistoryId(null); return; }
     setHistoryId(exId);
-    const cached = historyCache.get(exId);
+    const cached = historyCacheRef.current.get(exId);
     if (cached) {
       setHistoryData(cached);
       setHistoryLoading(false);
       return;
     }
     setHistoryLoading(true);
+    // Capture epoch at request time. If the cache is invalidated mid-flight
+    // (e.g. user resets stats while loading), don't write stale data.
+    const epochAtRequest = cacheEpochRef.current;
     const data = await fetchExerciseHistory(exId);
-    const typed = data as Array<{ plan_date: string; weight_kg: number | null; sets: number; reps: number }>;
-    historyCache.set(exId, typed);
+    const typed = data as HistoryRow[];
+    if (epochAtRequest === cacheEpochRef.current) {
+      historyCacheRef.current.set(exId, typed);
+    }
     setHistoryData(typed);
     setHistoryLoading(false);
   };
