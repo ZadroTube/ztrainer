@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN");
+const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "https://ztrainerz.netlify.app";
 
 if (!BOT_TOKEN) {
   console.error("FATAL: TELEGRAM_BOT_TOKEN is not set in Edge Function secrets");
@@ -15,7 +16,12 @@ interface TelegramUser {
   photo_url?: string;
 }
 
-function corsHeaders(origin = "*") {
+// ---------------------------------------------------------------------------
+// CORS: restrict to known origin (set ALLOWED_ORIGIN secret to override).
+// ---------------------------------------------------------------------------
+function corsHeaders(requestOrigin?: string | null) {
+  // Allow the configured origin, or echo back the request origin if it matches.
+  const origin = (requestOrigin === ALLOWED_ORIGIN) ? ALLOWED_ORIGIN : ALLOWED_ORIGIN;
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -24,6 +30,32 @@ function corsHeaders(origin = "*") {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Replay protection: reject the same (telegram_id, auth_date) pair within
+// 5 minutes. This prevents an attacker from re-using a captured initData/
+// authData string to mint new sessions. TTL-based in-memory map — Edge
+// Functions are short-lived isolates so this is cleaned up automatically.
+// ---------------------------------------------------------------------------
+const recentAuths = new Map<string, number>(); // key → timestamp
+const REPLAY_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+
+function isReplay(telegramId: number, authDate: number): boolean {
+  const key = `${telegramId}:${authDate}`;
+  const now = Date.now();
+  // Lazy cleanup: remove old entries (max once per request, cap at 1000 entries)
+  if (recentAuths.size > 1000) {
+    for (const [k, ts] of recentAuths) {
+      if (now - ts > REPLAY_WINDOW_MS) recentAuths.delete(k);
+    }
+  }
+  if (recentAuths.has(key)) return true;
+  recentAuths.set(key, now);
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 function parseQueryString(data: string): Record<string, string> {
   const map: Record<string, string> = {};
   for (const pair of data.split("&")) {
@@ -91,10 +123,7 @@ async function validateLoginWidgetAuth(authData: string): Promise<{ valid: boole
   return hex === hash ? { valid: true } : { valid: false, error: "Invalid signature" };
 }
 
-// Generate a cryptographically random one-time password. We set it on the
-// auth.users row right before signInWithPassword and never persist it. This
-// avoids the risk of a deterministic password being computable from a leaked
-// BOT_TOKEN.
+// Generate a cryptographically random one-time password.
 function generateOneTimePassword(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
@@ -174,20 +203,25 @@ async function authenticateUser(user: TelegramUser, supabase: ReturnType<typeof 
   };
 }
 
+// ---------------------------------------------------------------------------
+// Handler
+// ---------------------------------------------------------------------------
 serve(async (req: Request) => {
+  const reqOrigin = req.headers.get("origin");
+
   if (!BOT_TOKEN) {
     return new Response(
       JSON.stringify({ error: "Server misconfigured: TELEGRAM_BOT_TOKEN missing" }),
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(reqOrigin) }
     );
   }
 
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders() });
+    return new Response(null, { status: 204, headers: corsHeaders(reqOrigin) });
   }
 
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "POST required" }), { status: 405, headers: corsHeaders() });
+    return new Response(JSON.stringify({ error: "POST required" }), { status: 405, headers: corsHeaders(reqOrigin) });
   }
 
   try {
@@ -201,28 +235,34 @@ serve(async (req: Request) => {
     if (body.initData) {
       const validation = await validateMiniAppInitData(body.initData);
       if (!validation.valid) {
-        return new Response(JSON.stringify({ error: validation.error ?? "Invalid initData" }), { status: 401, headers: corsHeaders() });
+        return new Response(JSON.stringify({ error: validation.error ?? "Invalid initData" }), { status: 401, headers: corsHeaders(reqOrigin) });
       }
 
       const params = parseQueryString(body.initData);
       const userStr = params.user;
       if (!userStr) {
-        return new Response(JSON.stringify({ error: "No user in initData" }), { status: 400, headers: corsHeaders() });
+        return new Response(JSON.stringify({ error: "No user in initData" }), { status: 400, headers: corsHeaders(reqOrigin) });
       }
 
       const user: TelegramUser = JSON.parse(userStr);
+
+      // Replay protection
+      if (isReplay(user.id, Number(params.auth_date))) {
+        return new Response(JSON.stringify({ error: "Replay detected" }), { status: 429, headers: corsHeaders(reqOrigin) });
+      }
+
       const result = await authenticateUser(user, supabase);
       if (!result) {
-        return new Response(JSON.stringify({ error: "Authentication failed" }), { status: 500, headers: corsHeaders() });
+        return new Response(JSON.stringify({ error: "Authentication failed" }), { status: 500, headers: corsHeaders(reqOrigin) });
       }
-      return new Response(JSON.stringify(result), { headers: corsHeaders() });
+      return new Response(JSON.stringify(result), { headers: corsHeaders(reqOrigin) });
     }
 
     // Path 2: Login Widget (authData format — flat key=value pairs)
     if (body.authData) {
       const validation = await validateLoginWidgetAuth(body.authData);
       if (!validation.valid) {
-        return new Response(JSON.stringify({ error: validation.error ?? "Invalid authData" }), { status: 401, headers: corsHeaders() });
+        return new Response(JSON.stringify({ error: validation.error ?? "Invalid authData" }), { status: 401, headers: corsHeaders(reqOrigin) });
       }
 
       const params = parseQueryString(body.authData);
@@ -234,19 +274,24 @@ serve(async (req: Request) => {
         photo_url: params.photo_url,
       };
 
+      // Replay protection
+      if (isReplay(user.id, Number(params.auth_date))) {
+        return new Response(JSON.stringify({ error: "Replay detected" }), { status: 429, headers: corsHeaders(reqOrigin) });
+      }
+
       const result = await authenticateUser(user, supabase);
       if (!result) {
-        return new Response(JSON.stringify({ error: "Authentication failed" }), { status: 500, headers: corsHeaders() });
+        return new Response(JSON.stringify({ error: "Authentication failed" }), { status: 500, headers: corsHeaders(reqOrigin) });
       }
-      return new Response(JSON.stringify(result), { headers: corsHeaders() });
+      return new Response(JSON.stringify(result), { headers: corsHeaders(reqOrigin) });
     }
 
-    return new Response(JSON.stringify({ error: "initData or authData is required" }), { status: 400, headers: corsHeaders() });
+    return new Response(JSON.stringify({ error: "initData or authData is required" }), { status: 400, headers: corsHeaders(reqOrigin) });
   } catch (err) {
     console.error("Unexpected error:", err);
     return new Response(
       JSON.stringify({ error: "Internal server error" }),
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(req.headers.get("origin")) }
     );
   }
 });
