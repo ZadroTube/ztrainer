@@ -253,6 +253,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // --- Load data from Supabase ---
   const loadFromSupabase = useCallback(async () => {
     try {
+      // Ensure session is active before querying (guards against race conditions)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('loadFromSupabase called without active session, skipping');
+        setLoading(false);
+        return;
+      }
+
       const since = format(subDays(new Date(), 60), 'yyyy-MM-dd');
       const [{ data: exercises }, { data: wp }, { data: cs }, { data: ws }, { data: er }, { data: ua }] = await Promise.all([
         supabase.from('exercises').select('*').is('archived_at', null).order('created_at'),
@@ -272,7 +280,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setExerciseDb(exerciseData);
 
       if (exerciseData.length === 0) {
-        await seedDefaultExercises();
+        // Double-check: verify session is active before seeding
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          await seedDefaultExercises();
+        }
       }
 
       const plans: PlannedWorkoutsDict = {};
