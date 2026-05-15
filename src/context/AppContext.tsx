@@ -281,10 +281,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
               username: session.user.user_metadata.username,
               photo_url: session.user.user_metadata.photo_url,
             });
+            await ensureProfile();
+            await loadFromSupabase();
+            return;
           }
-          await ensureProfile();
-          await loadFromSupabase();
-          return;
+          await supabase.auth.signOut();
         }
 
         const isTelegramWebView = !!(window.Telegram?.WebApp || (window as any).TelegramWebviewProxy);
