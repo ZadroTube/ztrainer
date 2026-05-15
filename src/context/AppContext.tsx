@@ -340,13 +340,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           await supabase.auth.signOut();
         }
 
-        const isTelegramWebView = !!(window.Telegram?.WebApp || (window as any).TelegramWebviewProxy);
+        const tgWebApp = window.Telegram?.WebApp;
+        const tgProxy = (window as any).TelegramWebviewProxy;
+        const isTelegramWebView = !!(tgWebApp || tgProxy);
 
         if (isTelegramWebView) {
-          const initData = window.Telegram?.WebApp?.initData || '';
+          const initData = tgWebApp?.initData || '';
           if (!initData) {
             setIsTelegram(true);
-            setLoadError('Не удалось получить данные авторизации Telegram. Откройте приложение через кнопку в боте @ZadroTubikBot.');
+            const debug = [
+              `WebApp: ${!!tgWebApp}`,
+              `Proxy: ${!!tgProxy}`,
+              `initData: "${initData}"`,
+              `version: ${tgWebApp?.version ?? 'N/A'}`,
+              `platform: ${tgWebApp?.platform ?? 'N/A'}`,
+            ].join(', ');
+            setLoadError(`Не удалось получить initData. Debug: ${debug}`);
             setLoading(false);
             return;
           }
