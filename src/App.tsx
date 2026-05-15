@@ -7,10 +7,11 @@ import { AppProvider, useUIContext } from '@/context/AppContext';
 import { TabContainer } from '@/components/tabs/TabContainer';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { LoginScreen } from '@/components/auth/LoginScreen';
 import { AlertTriangle } from 'lucide-react';
 
 function AppContent() {
-  const { loading, loadError, syncError } = useUIContext();
+  const { loading, needsLogin, loadError, syncError, handleWidgetAuth } = useUIContext();
 
   if (loading) {
     return (
@@ -19,6 +20,10 @@ function AppContent() {
         <p className="text-sm font-medium animate-pulse">Загрузка...</p>
       </div>
     );
+  }
+
+  if (needsLogin) {
+    return <LoginScreen onAuthSuccess={handleWidgetAuth} />;
   }
 
   if (loadError) {

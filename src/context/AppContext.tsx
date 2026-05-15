@@ -68,10 +68,12 @@ declare global {
 
 interface UIContextType {
   loading: boolean;
+  needsLogin: boolean;
   isTelegram: boolean;
   userProfile: UserProfile | null;
   loadError: string | null;
   syncError: string | null;
+  handleWidgetAuth: (data: { first_name?: string; username?: string; photo_url?: string }) => void;
   activeTab: TabName;
   setActiveTab: (tab: TabName) => void;
   selectedDate: Date;
@@ -128,6 +130,7 @@ const TimerContext = createContext<TimerContextType | undefined>(undefined);
 export function AppProvider({ children }: { children: ReactNode }) {
   // --- UI state ---
   const [loading, setLoading] = useState(true);
+  const [needsLogin, setNeedsLogin] = useState(false);
   const [isTelegram, setIsTelegram] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -169,8 +172,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!existing) {
       await supabase.from('profiles').insert({
         id: user.id,
-        telegram_id: null,
-        first_name: profileData?.first_name ?? (user.is_anonymous ? 'Пользователь' : (user.user_metadata?.first_name ?? 'Пользователь')),
+        telegram_id: user.user_metadata?.telegram_id ?? null,
+        first_name: profileData?.first_name ?? user.user_metadata?.first_name ?? null,
         username: profileData?.username ?? null,
         photo_url: profileData?.photo_url ?? null,
       });
@@ -264,7 +267,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [seedDefaultExercises]);
 
-  // --- Init: always authenticate, always load from Supabase ---
+  // --- Init: always authenticate via Telegram, always load from Supabase ---
   useEffect(() => {
     (async () => {
       try {
@@ -308,15 +311,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const { error: anonError } = await supabase.auth.signInAnonymously();
-        if (anonError) {
-          console.error('Anonymous auth failed:', anonError);
-          setLoadError('Не удалось авторизоваться. Попробуйте снова.');
-          setLoading(false);
-          return;
-        }
-        await ensureProfile();
-        await loadFromSupabase();
+        setNeedsLogin(true);
+        setLoading(false);
       } catch (err) {
         console.error('Init failed:', err);
         setLoadError(err instanceof Error ? err.message : 'Не удалось инициализировать приложение');
@@ -324,6 +320,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     })();
   }, [loadFromSupabase, ensureProfile]);
+
+  // --- Handle Telegram Login Widget callback ---
+  const handleWidgetAuth = useCallback(async (data: { first_name?: string; username?: string; photo_url?: string }) => {
+    setLoading(true);
+    setNeedsLogin(false);
+    setIsTelegram(true);
+    setUserProfile(data);
+    await ensureProfile(data);
+    await loadFromSupabase();
+  }, [ensureProfile, loadFromSupabase]);
 
   // --- Stats derivation ---
   useEffect(() => {
@@ -514,7 +520,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // --- Context values ---
   const uiValue: UIContextType = {
-    loading, isTelegram, userProfile, loadError, syncError,
+    loading, needsLogin, isTelegram, userProfile, loadError, syncError, handleWidgetAuth,
     activeTab, setActiveTab, selectedDate, setSelectedDate, viewMode, setViewMode,
   };
 

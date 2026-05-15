@@ -7,7 +7,7 @@ if (!BOT_TOKEN) {
   console.error("FATAL: TELEGRAM_BOT_TOKEN is not set in Edge Function secrets");
 }
 
-interface InitDataUser {
+interface TelegramUser {
   id: number;
   first_name?: string;
   last_name?: string;
@@ -24,9 +24,9 @@ function corsHeaders(origin = "*") {
   };
 }
 
-function parseInitData(initData: string): Record<string, string> {
+function parseQueryString(data: string): Record<string, string> {
   const map: Record<string, string> = {};
-  for (const pair of initData.split("&")) {
+  for (const pair of data.split("&")) {
     const idx = pair.indexOf("=");
     if (idx === -1) continue;
     const key = pair.slice(0, idx);
@@ -36,10 +36,14 @@ function parseInitData(initData: string): Record<string, string> {
   return map;
 }
 
-async function validateInitData(initData: string): Promise<{ valid: boolean; error?: string }> {
-  const params = parseInitData(initData);
-  const hash = params.hash;
+function buildCheckString(params: Record<string, string>): string {
+  const sorted = Object.keys(params).filter(k => k !== "hash").sort();
+  return sorted.map(k => `${k}=${params[k]}`).join("\n");
+}
 
+async function validateMiniAppInitData(initData: string): Promise<{ valid: boolean; error?: string }> {
+  const params = parseQueryString(initData);
+  const hash = params.hash;
   if (!hash) return { valid: false, error: "Missing hash" };
 
   const authDate = Number(params.auth_date);
@@ -48,64 +52,126 @@ async function validateInitData(initData: string): Promise<{ valid: boolean; err
     return { valid: false, error: "initData expired" };
   }
 
-  delete params.hash;
-
-  const checkString = Object.keys(params)
-    .sort()
-    .map((k) => `${k}=${params[k]}`)
-    .join("\n");
+  const checkString = buildCheckString(params);
 
   const encoder = new TextEncoder();
   const secretKey = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode("WebAppData"),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
+    "raw", encoder.encode("WebAppData"),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
   );
-  const botTokenKey = await crypto.subtle.sign(
-    "HMAC",
-    secretKey,
-    encoder.encode(BOT_TOKEN)
-  );
-  const finalKey = await crypto.subtle.importKey(
-    "raw",
-    botTokenKey,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    finalKey,
-    encoder.encode(checkString)
-  );
+  const botTokenKey = await crypto.subtle.sign("HMAC", secretKey, encoder.encode(BOT_TOKEN));
+  const finalKey = await crypto.subtle.importKey("raw", botTokenKey, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", finalKey, encoder.encode(checkString));
 
-  const hex = Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
+  const hex = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
   return hex === hash ? { valid: true } : { valid: false, error: "Invalid signature" };
 }
 
-/** Детерминированный пароль — только Edge Function знает BOT_TOKEN */
+async function validateLoginWidgetAuth(authData: string): Promise<{ valid: boolean; error?: string }> {
+  const params = parseQueryString(authData);
+  const hash = params.hash;
+  if (!hash) return { valid: false, error: "Missing hash" };
+
+  const authDate = Number(params.auth_date);
+  if (!authDate) return { valid: false, error: "Missing auth_date" };
+  if (Math.floor(Date.now() / 1000) - authDate > 86400) {
+    return { valid: false, error: "authData expired" };
+  }
+
+  const checkString = buildCheckString(params);
+
+  const encoder = new TextEncoder();
+  const secretKey = await crypto.subtle.importKey(
+    "raw", encoder.encode(BOT_TOKEN),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", secretKey, encoder.encode(checkString));
+
+  const hex = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return hex === hash ? { valid: true } : { valid: false, error: "Invalid signature" };
+}
+
 async function derivePassword(telegramId: number, secret: string): Promise<string> {
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
+    "raw", encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
   );
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(String(telegramId))
-  );
-  return Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(String(telegramId)));
+  return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function authenticateUser(user: TelegramUser, supabase: ReturnType<typeof createClient>) {
+  const email = `tg_${user.id}@telegram.local`;
+  const password = await derivePassword(user.id, BOT_TOKEN);
+
+  const { data: existingProfile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("telegram_id", user.id)
+    .maybeSingle();
+
+  let authUserId: string;
+
+  if (existingProfile) {
+    authUserId = existingProfile.id;
+    const { error: updateErr } = await supabase.auth.admin.updateUserById(authUserId, {
+      password,
+      email_confirm: true,
+      user_metadata: {
+        telegram_id: user.id,
+        first_name: user.first_name ?? "",
+        username: user.username ?? "",
+        photo_url: user.photo_url ?? "",
+      },
+    });
+    if (updateErr) console.error("updateUser error:", updateErr);
+  } else {
+    const { data: newUser, error: createErr } = await supabase.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      password,
+      user_metadata: {
+        telegram_id: user.id,
+        first_name: user.first_name ?? "",
+        username: user.username ?? "",
+        photo_url: user.photo_url ?? "",
+      },
+    });
+
+    if (createErr || !newUser?.user) {
+      console.error("createUser error:", createErr);
+      return null;
+    }
+    authUserId = newUser.user.id;
+  }
+
+  await supabase.from("profiles").upsert({
+    id: authUserId,
+    telegram_id: user.id,
+    username: user.username ?? null,
+    first_name: user.first_name ?? null,
+    last_name: user.last_name ?? null,
+    photo_url: user.photo_url ?? null,
+  });
+
+  const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+
+  if (signInErr || !signInData.session) {
+    console.error("signIn error:", signInErr);
+    return null;
+  }
+
+  return {
+    access_token: signInData.session.access_token,
+    refresh_token: signInData.session.refresh_token,
+    expires_in: signInData.session.expires_in,
+    profile_id: authUserId,
+    telegram_id: user.id,
+    first_name: user.first_name,
+    username: user.username,
+    photo_url: user.photo_url,
+  };
 }
 
 serve(async (req: Request) => {
@@ -125,117 +191,57 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { initData } = await req.json();
-
-    if (!initData) {
-      return new Response(JSON.stringify({ error: "initData is required" }), { status: 400, headers: corsHeaders() });
-    }
-
-    const validation = await validateInitData(initData);
-    if (!validation.valid) {
-      return new Response(JSON.stringify({ error: validation.error ?? "Invalid initData" }), { status: 401, headers: corsHeaders() });
-    }
-
-    const params = parseInitData(initData);
-    const userStr = params.user;
-    if (!userStr) {
-      return new Response(JSON.stringify({ error: "No user in initData" }), { status: 400, headers: corsHeaders() });
-    }
-
-    const user: InitDataUser = JSON.parse(userStr);
-    const email = `tg_${user.id}@telegram.local`;
-    const password = await derivePassword(user.id, BOT_TOKEN);
-
+    const body = await req.json();
     const supabase = createClient(
       Deno.env.get("SB_URL")!,
       Deno.env.get("SB_SERVICE_ROLE_KEY")!
     );
 
-    // 1. Проверить, есть ли уже пользователь с таким telegram_id
-    const { data: existingProfile } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("telegram_id", user.id)
-      .maybeSingle();
-
-    let authUserId: string;
-
-    if (existingProfile) {
-      authUserId = existingProfile.id;
-      // Миграция: обновляем пароль и метаданные на актуальные
-      const { error: updateErr } = await supabase.auth.admin.updateUserById(authUserId, {
-        password,
-        email_confirm: true,
-        user_metadata: {
-          telegram_id: user.id,
-          first_name: user.first_name ?? "",
-          username: user.username ?? "",
-          photo_url: user.photo_url ?? "",
-        },
-      });
-      if (updateErr) {
-        console.error("updateUser password error:", updateErr);
+    // Path 1: Mini App (initData format — has nested "user" JSON)
+    if (body.initData) {
+      const validation = await validateMiniAppInitData(body.initData);
+      if (!validation.valid) {
+        return new Response(JSON.stringify({ error: validation.error ?? "Invalid initData" }), { status: 401, headers: corsHeaders() });
       }
-    } else {
-      const { data: newUser, error: createErr } = await supabase.auth.admin.createUser({
-        email,
-        email_confirm: true,
-        password,
-        user_metadata: {
-          telegram_id: user.id,
-          first_name: user.first_name ?? "",
-          username: user.username ?? "",
-          photo_url: user.photo_url ?? "",
-        },
-      });
 
-      if (createErr || !newUser?.user) {
-        console.error("createUser error:", createErr);
-        return new Response(
-          JSON.stringify({ error: "Failed to create user" }),
-          { status: 500, headers: corsHeaders() }
-        );
+      const params = parseQueryString(body.initData);
+      const userStr = params.user;
+      if (!userStr) {
+        return new Response(JSON.stringify({ error: "No user in initData" }), { status: 400, headers: corsHeaders() });
       }
-      authUserId = newUser.user.id;
+
+      const user: TelegramUser = JSON.parse(userStr);
+      const result = await authenticateUser(user, supabase);
+      if (!result) {
+        return new Response(JSON.stringify({ error: "Authentication failed" }), { status: 500, headers: corsHeaders() });
+      }
+      return new Response(JSON.stringify(result), { headers: corsHeaders() });
     }
 
-    // 2. Upsert профиля
-    await supabase.from("profiles").upsert({
-      id: authUserId,
-      telegram_id: user.id,
-      username: user.username ?? null,
-      first_name: user.first_name ?? null,
-      last_name: user.last_name ?? null,
-      photo_url: user.photo_url ?? null,
-    });
+    // Path 2: Login Widget (authData format — flat key=value pairs)
+    if (body.authData) {
+      const validation = await validateLoginWidgetAuth(body.authData);
+      if (!validation.valid) {
+        return new Response(JSON.stringify({ error: validation.error ?? "Invalid authData" }), { status: 401, headers: corsHeaders() });
+      }
 
-    // 3. Авторизоваться — получаем валидную сессию
-    const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+      const params = parseQueryString(body.authData);
+      const user: TelegramUser = {
+        id: Number(params.id),
+        first_name: params.first_name,
+        last_name: params.last_name,
+        username: params.username,
+        photo_url: params.photo_url,
+      };
 
-    if (signInErr || !signInData.session) {
-      console.error("signIn error:", signInErr);
-      return new Response(
-        JSON.stringify({ error: "Authentication failed" }),
-        { status: 500, headers: corsHeaders() }
-      );
+      const result = await authenticateUser(user, supabase);
+      if (!result) {
+        return new Response(JSON.stringify({ error: "Authentication failed" }), { status: 500, headers: corsHeaders() });
+      }
+      return new Response(JSON.stringify(result), { headers: corsHeaders() });
     }
 
-    return new Response(
-      JSON.stringify({
-        access_token: signInData.session.access_token,
-        refresh_token: signInData.session.refresh_token,
-        expires_in: signInData.session.expires_in,
-        profile_id: authUserId,
-        telegram_id: user.id,
-        first_name: user.first_name,
-        username: user.username,
-        photo_url: user.photo_url,
-      }),
-      { headers: corsHeaders() }
-    );
+    return new Response(JSON.stringify({ error: "initData or authData is required" }), { status: 400, headers: corsHeaders() });
   } catch (err) {
     console.error("Unexpected error:", err);
     return new Response(

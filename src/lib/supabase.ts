@@ -5,19 +5,17 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-export async function authViaTelegram(initData: string) {
-  const { data, error } = await supabase.functions.invoke<{
-    access_token?: string;
-    refresh_token?: string;
-    profile_id: string;
-    telegram_id: number;
-    first_name?: string;
-    username?: string;
-    photo_url?: string;
-  }>("telegram-auth", {
-    body: { initData },
-  });
+interface AuthResult {
+  access_token?: string;
+  refresh_token?: string;
+  profile_id: string;
+  telegram_id: number;
+  first_name?: string;
+  username?: string;
+  photo_url?: string;
+}
 
+async function handleAuthResponse(data: AuthResult | null, error: unknown) {
   if (error || !data?.access_token || !data?.refresh_token) return null;
 
   await supabase.auth.setSession({
@@ -26,6 +24,20 @@ export async function authViaTelegram(initData: string) {
   });
 
   return data;
+}
+
+export async function authViaTelegram(initData: string) {
+  const { data, error } = await supabase.functions.invoke<AuthResult>("telegram-auth", {
+    body: { initData },
+  });
+  return handleAuthResponse(data, error);
+}
+
+export async function authViaTelegramWidget(authData: string) {
+  const { data, error } = await supabase.functions.invoke<AuthResult>("telegram-auth", {
+    body: { authData },
+  });
+  return handleAuthResponse(data, error);
 }
 
 export async function fetchExerciseHistory(exerciseId: string, limit = 10) {
