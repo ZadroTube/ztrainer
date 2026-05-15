@@ -43,10 +43,10 @@ interface AchievementRow {
   achievement_type: string; unlocked_at: string;
 }
 
-const defaultExercises: BaseExercise[] = [
-  { id: '1', name: 'Жим лежа', targetMuscleGroup: 'Грудь', defaultSets: 3, defaultReps: 10, defaultRestTimeSeconds: 90 },
-  { id: '2', name: 'Приседания со штангой', targetMuscleGroup: 'Ноги', defaultSets: 3, defaultReps: 12, defaultRestTimeSeconds: 120 },
-  { id: '3', name: 'Подтягивания', targetMuscleGroup: 'Спина', defaultSets: 3, defaultReps: 8, defaultRestTimeSeconds: 90 },
+const defaultExercises: Omit<BaseExercise, 'id'>[] = [
+  { name: 'Жим лежа', targetMuscleGroup: 'Грудь', defaultSets: 3, defaultReps: 10, defaultRestTimeSeconds: 90 },
+  { name: 'Приседания со штангой', targetMuscleGroup: 'Ноги', defaultSets: 3, defaultReps: 12, defaultRestTimeSeconds: 120 },
+  { name: 'Подтягивания', targetMuscleGroup: 'Спина', defaultSets: 3, defaultReps: 8, defaultRestTimeSeconds: 90 },
 ];
 
 let _setSyncError: ((msg: string | null) => void) | null = null;
@@ -161,15 +161,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [restPausedAt, setRestPausedAt] = useState<number | null>(null);
   const [restAccumulatedPause, setRestAccumulatedPause] = useState<number>(0);
 
-  // --- Init ---
-  const initDev = useCallback(() => {
-    setExerciseDb(defaultExercises);
-    setPlannedWorkouts({});
-    setCompletedSets({});
-    setDailyDurations({});
-    setLoading(false);
+  // --- Ensure profile row exists for current auth.uid() ---
+  const ensureProfile = useCallback(async (profileData?: Partial<UserProfile>) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: existing } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle();
+    if (!existing) {
+      await supabase.from('profiles').insert({
+        id: user.id,
+        telegram_id: null,
+        first_name: profileData?.first_name ?? (user.is_anonymous ? 'Пользователь' : (user.user_metadata?.first_name ?? 'Пользователь')),
+        username: profileData?.username ?? null,
+        photo_url: profileData?.photo_url ?? null,
+      });
+    }
   }, []);
 
+  // --- Seed default exercises for new users ---
+  const seedDefaultExercises = useCallback(async () => {
+    const seeded: BaseExercise[] = [];
+    for (const ex of defaultExercises) {
+      const id = crypto.randomUUID();
+      seeded.push({ ...ex, id });
+      supaSafe(
+        supabase.from('exercises').insert({
+          id,
+          name: ex.name,
+          target_muscle_group: ex.targetMuscleGroup ?? null,
+          default_sets: ex.defaultSets ?? 3,
+          default_reps: ex.defaultReps ?? 10,
+          default_rest_time_seconds: ex.defaultRestTimeSeconds ?? 90,
+          default_weight_kg: ex.defaultWeightKg ?? null,
+        }),
+        'seed exercise',
+        () => setExerciseDb(prev => prev.filter(e => e.id !== id)),
+      );
+    }
+    setExerciseDb(seeded);
+  }, []);
+
+  // --- Load data from Supabase ---
   const loadFromSupabase = useCallback(async () => {
     try {
       const since = format(subDays(new Date(), 60), 'yyyy-MM-dd');
@@ -182,18 +213,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         supabase.from('user_achievements').select('*'),
       ]);
 
-      setExerciseDb((exercises ?? []).map((r: ExerciseRow) => ({
+      const exerciseData = (exercises ?? []).map((r: ExerciseRow) => ({
         id: r.id, name: r.name, targetMuscleGroup: r.target_muscle_group ?? undefined,
         defaultSets: r.default_sets, defaultReps: r.default_reps,
         defaultRestTimeSeconds: r.default_rest_time_seconds,
         defaultWeightKg: r.default_weight_kg != null ? Number(r.default_weight_kg) : undefined,
-      })));
+      }));
+      setExerciseDb(exerciseData);
+
+      if (exerciseData.length === 0) {
+        await seedDefaultExercises();
+      }
 
       const plans: PlannedWorkoutsDict = {};
       for (const r of (wp ?? []) as WorkoutPlanRow[]) {
         if (!plans[r.plan_date]) plans[r.plan_date] = [];
         plans[r.plan_date].push({
-          id: r.exercise_id ?? '', name: r.name, targetMuscleGroup: r.target_muscle_group,
+          id: r.exercise_id ?? '', name: r.name, targetMuscleGroup: r.target_muscle_group ?? undefined,
           defaultSets: undefined, defaultReps: undefined, defaultRestTimeSeconds: undefined, defaultWeightKg: undefined,
           workoutId: r.id, sets: r.sets, reps: r.reps, restTimeSeconds: r.rest_time_seconds,
           weightKg: r.weight_kg != null ? Number(r.weight_kg) : undefined,
@@ -226,35 +262,68 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить данные');
       setLoading(false);
     }
-  }, []);
+  }, [seedDefaultExercises]);
 
+  // --- Init: always authenticate, always load from Supabase ---
   useEffect(() => {
     (async () => {
-      const isTelegramWebView = !!(window.Telegram?.WebApp || (window as any).TelegramWebviewProxy);
-      if (isTelegramWebView) {
-        const initData = window.Telegram?.WebApp?.initData || '';
-        if (!initData) {
-          setIsTelegram(true);
-          setLoadError('Не удалось получить данные авторизации Telegram. Откройте приложение через кнопку в боте @ZadroTubikBot.');
-          setLoading(false);
-          return;
-        }
-        const result = await authViaTelegram(initData);
-        if (result) {
-          setIsTelegram(true);
-          setUserProfile({ first_name: result.first_name, username: result.username, photo_url: result.photo_url });
-          setLoadError(null);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          const isTg = !!session.user?.user_metadata?.telegram_id;
+          if (isTg) {
+            setIsTelegram(true);
+            setUserProfile({
+              first_name: session.user.user_metadata.first_name,
+              username: session.user.user_metadata.username,
+              photo_url: session.user.user_metadata.photo_url,
+            });
+          }
+          await ensureProfile();
           await loadFromSupabase();
           return;
         }
-        setIsTelegram(true);
-        setLoadError('Ошибка авторизации через Telegram. Убедитесь, что Edge Function развёрнута в Supabase, и попробуйте снова.');
+
+        const isTelegramWebView = !!(window.Telegram?.WebApp || (window as any).TelegramWebviewProxy);
+
+        if (isTelegramWebView) {
+          const initData = window.Telegram?.WebApp?.initData || '';
+          if (!initData) {
+            setIsTelegram(true);
+            setLoadError('Не удалось получить данные авторизации Telegram. Откройте приложение через кнопку в боте @ZadroTubikBot.');
+            setLoading(false);
+            return;
+          }
+          const result = await authViaTelegram(initData);
+          if (result) {
+            setIsTelegram(true);
+            setUserProfile({ first_name: result.first_name, username: result.username, photo_url: result.photo_url });
+            await ensureProfile({ first_name: result.first_name, username: result.username, photo_url: result.photo_url });
+            await loadFromSupabase();
+            return;
+          }
+          setIsTelegram(true);
+          setLoadError('Ошибка авторизации через Telegram. Убедитесь, что Edge Function развёрнута в Supabase, и попробуйте снова.');
+          setLoading(false);
+          return;
+        }
+
+        const { error: anonError } = await supabase.auth.signInAnonymously();
+        if (anonError) {
+          console.error('Anonymous auth failed:', anonError);
+          setLoadError('Не удалось авторизоваться. Попробуйте снова.');
+          setLoading(false);
+          return;
+        }
+        await ensureProfile();
+        await loadFromSupabase();
+      } catch (err) {
+        console.error('Init failed:', err);
+        setLoadError(err instanceof Error ? err.message : 'Не удалось инициализировать приложение');
         setLoading(false);
-        return;
       }
-      initDev();
     })();
-  }, [loadFromSupabase, initDev]);
+  }, [loadFromSupabase, ensureProfile]);
 
   // --- Stats derivation ---
   useEffect(() => {
@@ -280,13 +349,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (totalSetsCompleted >= 100 && !achievements['volume_100']) achievements['volume_100'] = now;
     setUserStats({ totalWorkoutSeconds: totalSeconds, totalSets: totalSetsCompleted, currentStreak: totalSetsCompleted > 0 ? Math.max(streak, 1) : 0, achievements });
 
-    if (isTelegram) {
-      const newAchs = Object.entries(achievements).filter(([k]) => !userStats.achievements[k]);
-      for (const [type, time] of newAchs) {
-        supaSafe(supabase.from('user_achievements').upsert({ achievement_type: type, unlocked_at: new Date(time as number).toISOString() }, { onConflict: 'user_id, achievement_type' }), `achievement ${type}`);
-      }
+    const newAchs = Object.entries(achievements).filter(([k]) => !userStats.achievements[k]);
+    for (const [type, time] of newAchs) {
+      supaSafe(supabase.from('user_achievements').upsert({ achievement_type: type, unlocked_at: new Date(time as number).toISOString() }, { onConflict: 'user_id, achievement_type' }), `achievement ${type}`);
     }
-  }, [completedSets, dailyDurations, userStats.achievements, isTelegram]);
+  }, [completedSets, dailyDurations, userStats.achievements]);
 
   // --- Timer logic ---
   const startWorkoutTimer = () => {
@@ -309,7 +376,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       const rk = `${dateStr}_${restContext.workoutId}`;
       setActualExerciseRests(prev => ({ ...prev, [rk]: (prev[rk] ?? 0) + elapsed }));
-      if (isTelegram) supaSafe(supabase.from('exercise_rests').insert({ workout_plan_id: restContext.workoutId, actual_rest_seconds: elapsed }), 'exercise_rests insert');
+      supaSafe(supabase.from('exercise_rests').insert({ workout_plan_id: restContext.workoutId, actual_rest_seconds: elapsed }), 'exercise_rests insert');
     }
   };
 
@@ -346,27 +413,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // --- CRUD with Supabase sync + rollback ---
+  // --- CRUD with Supabase sync + rollback (always syncs) ---
   const addExerciseToDb = (ex: Omit<BaseExercise, 'id'>) => {
     const n = { ...ex, id: crypto.randomUUID() };
     setExerciseDb(prev => [...prev, n]);
-    if (isTelegram) supaSafe(
+    supaSafe(
       supabase.from('exercises').insert({ id: n.id, name: n.name, target_muscle_group: n.targetMuscleGroup ?? null, default_sets: n.defaultSets ?? 3, default_reps: n.defaultReps ?? 10, default_rest_time_seconds: n.defaultRestTimeSeconds ?? 90, default_weight_kg: n.defaultWeightKg ?? null }),
       'exercises insert',
       () => setExerciseDb(prev => prev.filter(e => e.id !== n.id)),
     );
   };
   const updateExerciseInDb = (id: string, ex: Omit<BaseExercise, 'id'>) => {
-    setExerciseDb(prev => { const old = prev.find(e => e.id === id); return prev.map(e => e.id === id ? { ...ex, id } : e); });
-    if (isTelegram) supaSafe(
-      supabase.from('exercises').update({ name: ex.name, target_muscle_group: ex.targetMuscleGroup ?? null, default_sets: ex.defaultSets ?? 3, default_reps: ex.defaultReps ?? 10, default_rest_time_seconds: ex.defaultRestTimeSeconds ?? 90, default_weight_kg: ex.defaultWeightKg ?? null }).eq('id', id),
-      'exercises update',
-      () => setExerciseDb(prev => prev.map(e => e.id === id ? { ...ex, id } : e)),
-    );
+    setExerciseDb(prev => {
+      const old = prev.find(e => e.id === id);
+      const rollback = () => { if (old) setExerciseDb(p => p.map(e => e.id === id ? old : e)); };
+      supaSafe(
+        supabase.from('exercises').update({ name: ex.name, target_muscle_group: ex.targetMuscleGroup ?? null, default_sets: ex.defaultSets ?? 3, default_reps: ex.defaultReps ?? 10, default_rest_time_seconds: ex.defaultRestTimeSeconds ?? 90, default_weight_kg: ex.defaultWeightKg ?? null }).eq('id', id),
+        'exercises update',
+        rollback,
+      );
+      return prev.map(e => e.id === id ? { ...ex, id } : e);
+    });
   };
   const deleteExerciseFromDb = (id: string) => {
-    setExerciseDb(prev => { const removed = prev.find(e => e.id === id); return prev.filter(e => e.id !== id); });
-    if (isTelegram) supaSafe(supabase.from('exercises').delete().eq('id', id), 'exercises delete');
+    setExerciseDb(prev => { const removed = prev.find(e => e.id === id); const next = prev.filter(e => e.id !== id); if (removed) { supaSafe(supabase.from('exercises').delete().eq('id', id), 'exercises delete', () => setExerciseDb(p => [...p, removed!])); } return next; });
   };
 
   const addExerciseToPlan = (dateStr: string, exercise: BaseExercise, sets: number, reps: number, rt?: number) => {
@@ -376,7 +446,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPlannedWorkouts(prev => {
       const today = prev[dateStr] ?? [];
       const newSortOrder = today.length;
-      if (isTelegram) supaSafe(
+      supaSafe(
         supabase.from('workout_plans').insert({ id: wid, plan_date: dateStr, exercise_id: exercise.id, name: exercise.name, target_muscle_group: exercise.targetMuscleGroup ?? null, sets, reps, rest_time_seconds: rt ?? null, weight_kg: weightKg ?? null, sort_order: newSortOrder }),
         'workout_plans insert',
         () => setPlannedWorkouts(p => ({ ...p, [dateStr]: (p[dateStr] ?? []).filter(e => e.workoutId !== wid) })),
@@ -390,23 +460,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ...prev,
       [dateStr]: (prev[dateStr] ?? []).map(ex => ex.workoutId === wid ? { ...ex, ...updates } : ex),
     }));
-    if (isTelegram) {
-      const sbUpdates: Record<string, unknown> = {};
-      if (updates.sets !== undefined) sbUpdates.sets = updates.sets;
-      if (updates.reps !== undefined) sbUpdates.reps = updates.reps;
-      if (updates.restTimeSeconds !== undefined) sbUpdates.rest_time_seconds = updates.restTimeSeconds ?? null;
-      if (updates.weightKg !== undefined) sbUpdates.weight_kg = updates.weightKg ?? null;
-      supaSafe(supabase.from('workout_plans').update(sbUpdates).eq('id', wid), 'workout_plans update');
-    }
+    const sbUpdates: Record<string, unknown> = {};
+    if (updates.sets !== undefined) sbUpdates.sets = updates.sets;
+    if (updates.reps !== undefined) sbUpdates.reps = updates.reps;
+    if (updates.restTimeSeconds !== undefined) sbUpdates.rest_time_seconds = updates.restTimeSeconds ?? null;
+    if (updates.weightKg !== undefined) sbUpdates.weight_kg = updates.weightKg ?? null;
+    supaSafe(supabase.from('workout_plans').update(sbUpdates).eq('id', wid), 'workout_plans update');
   };
 
   const removeExerciseFromPlan = (dateStr: string, wid: string) => {
     setPlannedWorkouts(prev => ({ ...prev, [dateStr]: (prev[dateStr] ?? []).filter(e => e.workoutId !== wid) }));
     setCompletedSets(prev => { const n = { ...prev }; for (const k of Object.keys(n)) { if (k.includes(wid)) delete n[k]; } return n; });
-    if (isTelegram) {
-      supaSafe(supabase.from('workout_plans').delete().eq('id', wid), 'workout_plans delete');
-      supaSafe(supabase.from('completed_sets').delete().eq('workout_plan_id', wid), 'completed_sets delete');
-    }
+    supaSafe(supabase.from('workout_plans').delete().eq('id', wid), 'workout_plans delete');
+    supaSafe(supabase.from('completed_sets').delete().eq('workout_plan_id', wid), 'completed_sets delete');
   };
 
   const toggleSetCompletion = (dateStr: string, wid: string, si: number, done: boolean) => {
@@ -414,10 +480,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const key = `${dateStr}_${wid}_${si}`;
     if (!done) {
       setCompletedSets(prev => { const n = { ...prev }; delete n[key]; return n; });
-      if (isTelegram) supaSafe(supabase.from('completed_sets').delete().eq('workout_plan_id', wid).eq('set_index', si), 'completed_sets delete');
+      supaSafe(supabase.from('completed_sets').delete().eq('workout_plan_id', wid).eq('set_index', si), 'completed_sets delete');
     } else {
       setCompletedSets(prev => ({ ...prev, [key]: true }));
-      if (isTelegram) supaSafe(
+      supaSafe(
         supabase.from('completed_sets').upsert({ workout_plan_id: wid, plan_date: dateStr, set_index: si }, { onConflict: 'user_id, workout_plan_id, set_index' }),
         'completed_sets upsert',
         () => setCompletedSets(prev => { const n = { ...prev }; delete n[key]; return n; }),
@@ -431,7 +497,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (secs > 0) {
       const ds = format(selectedDate, 'yyyy-MM-dd');
       setDailyDurations(prev => ({ ...prev, [ds]: (prev[ds] ?? 0) + secs }));
-      if (isTelegram) supaSafe(supabase.from('workout_sessions').insert({ plan_date: ds, duration_seconds: secs }), 'workout_sessions insert');
+      supaSafe(supabase.from('workout_sessions').insert({ plan_date: ds, duration_seconds: secs }), 'workout_sessions insert');
     }
     resetWorkoutTimer(); clearRestTimer();
   };
@@ -439,13 +505,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const resetUserStats = () => {
     setDailyDurations({}); setCompletedSets({}); setActualExerciseRests({}); setPlannedWorkouts({});
     setUserStats({ totalWorkoutSeconds: 0, totalSets: 0, currentStreak: 0, achievements: {} });
-    if (isTelegram) {
-      supaSafe(supabase.from('workout_sessions').delete(), 'reset workout_sessions');
-      supaSafe(supabase.from('completed_sets').delete(), 'reset completed_sets');
-      supaSafe(supabase.from('exercise_rests').delete(), 'reset exercise_rests');
-      supaSafe(supabase.from('workout_plans').delete(), 'reset workout_plans');
-      supaSafe(supabase.from('user_achievements').delete(), 'reset user_achievements');
-    }
+    supaSafe(supabase.from('workout_sessions').delete(), 'reset workout_sessions');
+    supaSafe(supabase.from('completed_sets').delete(), 'reset completed_sets');
+    supaSafe(supabase.from('exercise_rests').delete(), 'reset exercise_rests');
+    supaSafe(supabase.from('workout_plans').delete(), 'reset workout_plans');
+    supaSafe(supabase.from('user_achievements').delete(), 'reset user_achievements');
   };
 
   // --- Context values ---
