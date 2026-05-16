@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { Activity, Calendar as CalendarIcon, PieChart, Play, Pause, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { WorkoutTracker } from '@/components/fitness/WorkoutTracker';
 import { WorkoutConstructor } from '@/components/fitness/WorkoutConstructor';
+import { SectionHeader } from '@/components/layout/SectionHeader';
 
 const FitnessStats = lazy(() => import('@/components/fitness/FitnessStats').then(m => ({ default: m.FitnessStats })));
 
@@ -88,14 +89,7 @@ export function FitnessTab() {
   return (
     <div className="flex flex-col space-y-4 pb-24">
       {/* Header & View Mode Switch */}
-      <header className="px-2 pt-6 pb-2 flex justify-between items-center flex-shrink-0">
-        <div className="flex flex-col">
-          <span className="text-xs bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-500 font-bold uppercase tracking-widest">ZTrainer</span>
-          <h1 className="text-xl font-bold text-white">Тренировки</h1>
-        </div>
-        
-        <HeaderControls />
-      </header>
+      <SectionHeader brand="ZTrainer" title="Тренировки" rightSlot={<HeaderControls />} />
 
       {/* Calendar Header */}
       <div className="flex items-center justify-between px-2 pt-2">
