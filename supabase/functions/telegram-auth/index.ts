@@ -28,7 +28,7 @@ const TELEGRAM_ORIGINS = [
 ];
 
 function isPagesDevOrigin(origin: string): boolean {
-  return /^https:\/\/[a-z0-9-]+\.pages\.dev$/i.test(origin);
+  return /^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)?\.(pages|workers)\.dev$/i.test(origin);
 }
 
 function corsHeaders(requestOrigin?: string | null) {
