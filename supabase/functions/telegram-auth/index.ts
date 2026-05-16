@@ -19,7 +19,7 @@ interface TelegramUser {
 }
 
 // ---------------------------------------------------------------------------
-// CORS: allow configured origins + Telegram Web App origins.
+// CORS: allow configured origins + Telegram Web App origins + *.pages.dev.
 // ---------------------------------------------------------------------------
 const TELEGRAM_ORIGINS = [
   "https://web.telegram.org",
@@ -27,10 +27,15 @@ const TELEGRAM_ORIGINS = [
   "https://webz.telegram.org",
 ];
 
+function isPagesDevOrigin(origin: string): boolean {
+  return /^https:\/\/[a-z0-9-]+\.pages\.dev$/i.test(origin);
+}
+
 function corsHeaders(requestOrigin?: string | null) {
   const origin = requestOrigin || ALLOWED_ORIGINS[0];
   const allAllowed = [...ALLOWED_ORIGINS, ...TELEGRAM_ORIGINS];
-  const allowedOrigin = allAllowed.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  const isAllowed = allAllowed.includes(origin) || isPagesDevOrigin(origin);
+  const allowedOrigin = isAllowed ? origin : ALLOWED_ORIGINS[0];
   return {
     "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -45,7 +50,7 @@ function isOriginAllowed(requestOrigin: string | null): boolean {
   // Non-browser clients send no Origin header — allow them (they bypass CORS anyway).
   if (!requestOrigin) return true;
   const allAllowed = [...ALLOWED_ORIGINS, ...TELEGRAM_ORIGINS];
-  return allAllowed.includes(requestOrigin);
+  return allAllowed.includes(requestOrigin) || isPagesDevOrigin(requestOrigin);
 }
 
 // ---------------------------------------------------------------------------
