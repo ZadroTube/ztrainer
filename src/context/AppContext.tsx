@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { format, subDays, differenceInCalendarDays, parseISO } from 'date-fns';
 import { TabName, BaseExercise, WorkoutExercise, PlannedWorkoutsDict, CompletedSetsDict, UserStats } from '@/types';
 import { supabase, authViaTelegram } from '@/lib/supabase';
+import { subscribeFitnessRealtime } from '@/lib/realtime';
 
 // Type-narrowing for supabase fluent builders that resolve to { data, error }.
 type SupaResult = { data?: unknown; error?: { message?: string } | null };
@@ -406,6 +407,122 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     })();
   }, [loadFromSupabase, ensureProfile]);
+
+  // --- Realtime sync between user devices.
+  // Only run after we have a session AND data is loaded — otherwise events
+  // would arrive before the local state is initialized.
+  useEffect(() => {
+    if (loading) return;
+    if (!isTelegram) return;
+
+    const unsubscribe = subscribeFitnessRealtime({
+      onExerciseChange: (payload) => {
+        const ev = payload.eventType;
+        if (ev === 'INSERT' || ev === 'UPDATE') {
+          const r = payload.new;
+          // Filter out archived exercises on read events — we don't want to
+          // accidentally show a deleted exercise back to the user.
+          if (r.archived_at) {
+            setExerciseDb(prev => prev.filter(e => e.id !== r.id));
+            return;
+          }
+          const mapped: BaseExercise = {
+            id: r.id,
+            name: r.name,
+            targetMuscleGroup: r.target_muscle_group ?? undefined,
+            defaultSets: r.default_sets,
+            defaultReps: r.default_reps,
+            defaultRestTimeSeconds: r.default_rest_time_seconds,
+            defaultWeightKg: r.default_weight_kg != null ? Number(r.default_weight_kg) : undefined,
+          };
+          setExerciseDb(prev => {
+            const idx = prev.findIndex(e => e.id === r.id);
+            if (idx === -1) return [...prev, mapped];
+            // Keep order, replace in place.
+            return prev.map((e, i) => i === idx ? mapped : e);
+          });
+        } else if (ev === 'DELETE') {
+          const old = payload.old;
+          if (old?.id) setExerciseDb(prev => prev.filter(e => e.id !== old.id));
+        }
+        bumpHistoryCache();
+      },
+
+      onPlanChange: (payload) => {
+        const ev = payload.eventType;
+        if (ev === 'INSERT' || ev === 'UPDATE') {
+          const r = payload.new;
+          const mapped: WorkoutExercise = {
+            id: r.exercise_id ?? '',
+            name: r.name,
+            targetMuscleGroup: r.target_muscle_group ?? undefined,
+            defaultSets: undefined,
+            defaultReps: undefined,
+            defaultRestTimeSeconds: undefined,
+            defaultWeightKg: undefined,
+            workoutId: r.id,
+            sets: r.sets,
+            reps: r.reps,
+            restTimeSeconds: r.rest_time_seconds ?? undefined,
+            weightKg: r.weight_kg != null ? Number(r.weight_kg) : undefined,
+          };
+          setPlannedWorkouts(prev => {
+            const day = prev[r.plan_date] ?? [];
+            const idx = day.findIndex(w => w.workoutId === r.id);
+            const nextDay = idx === -1 ? [...day, mapped] : day.map((w, i) => i === idx ? mapped : w);
+            return { ...prev, [r.plan_date]: nextDay };
+          });
+        } else if (ev === 'DELETE') {
+          const old = payload.old;
+          if (!old?.id) return;
+          setPlannedWorkouts(prev => {
+            // We don't know plan_date in DELETE payload reliably (Supabase
+            // sends only the PK by default). Sweep all dates instead.
+            const next: PlannedWorkoutsDict = {};
+            for (const [date, list] of Object.entries(prev)) {
+              const filtered = list.filter(w => w.workoutId !== old.id);
+              if (filtered.length) next[date] = filtered;
+            }
+            return next;
+          });
+          // Also drop completed_sets that referenced this plan row.
+          setCompletedSets(prev => {
+            const next: CompletedSetsDict = {};
+            for (const k of Object.keys(prev)) {
+              if (!k.includes(old.id)) next[k] = prev[k];
+            }
+            return next;
+          });
+        }
+        bumpHistoryCache();
+      },
+
+      onCompletedSetChange: (payload) => {
+        const ev = payload.eventType;
+        if (ev === 'INSERT' || ev === 'UPDATE') {
+          const r = payload.new;
+          const key = `${r.plan_date}_${r.workout_plan_id}_${r.set_index}`;
+          setCompletedSets(prev => prev[key] ? prev : { ...prev, [key]: true });
+        } else if (ev === 'DELETE') {
+          const old = payload.old;
+          if (!old?.workout_plan_id) return;
+          // DELETE payload usually carries only PK — match by workout_plan_id + set_index if present.
+          setCompletedSets(prev => {
+            const next: CompletedSetsDict = {};
+            for (const k of Object.keys(prev)) {
+              const matchesPlan = k.includes(old.workout_plan_id);
+              const matchesIdx = old.set_index == null ? true : k.endsWith(`_${old.set_index}`);
+              if (matchesPlan && matchesIdx) continue;
+              next[k] = prev[k];
+            }
+            return next;
+          });
+        }
+      },
+    });
+
+    return unsubscribe;
+  }, [loading, isTelegram]);
 
   // --- Handle Telegram Login Widget callback ---
   const handleWidgetAuth = useCallback(async (data: { first_name?: string; username?: string; photo_url?: string }) => {
