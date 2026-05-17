@@ -277,6 +277,16 @@ export function cinemaGuessReveal(riddleId: string, signal?: AbortSignal): Promi
   return request('/api/cinema/guess/reveal', { method: 'POST', body: { riddle_id: riddleId }, signal });
 }
 
+export interface BackfillResult {
+  processed: number;
+  updated: number;
+  failed: { id: number; title: string; reason: string }[];
+}
+
+export function cinemaBackfill(signal?: AbortSignal): Promise<BackfillResult> {
+  return request('/api/cinema/backfill', { method: 'POST', signal });
+}
+
 // ---------------------------------------------------------------------------
 // News
 // ---------------------------------------------------------------------------

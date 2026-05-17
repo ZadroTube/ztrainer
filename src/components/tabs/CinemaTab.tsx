@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Film, Plus, Sparkles, Calendar, Star, Search } from 'lucide-react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { Film, Plus, Sparkles, Calendar, Star, Gamepad2 } from 'lucide-react';
 import { SectionHeader } from '@/components/layout/SectionHeader';
 import { MovieCard } from '@/components/cinema/MovieCard';
 import { AddMovieModal } from '@/components/cinema/AddMovieModal';
@@ -8,6 +8,7 @@ import { RatingModal } from '@/components/cinema/RatingModal';
 import { MovieDetailsModal } from '@/components/cinema/MovieDetailsModal';
 import { PremiereDetailsModal } from '@/components/cinema/PremiereDetailsModal';
 import { GuessGameModal } from '@/components/cinema/GuessGameModal';
+import { BackfillBanner } from '@/components/cinema/BackfillBanner';
 import {
   listMovies,
   markWatched,
@@ -47,6 +48,13 @@ export function CinemaTab() {
     loadAll();
   }, [loadAll]);
 
+  // How many of the user's movies still lack a TMDB id (so the explain
+  // button doesn't work for them). Used to surface the backfill banner.
+  const missingCount = useMemo(
+    () => [...watchlist, ...watched].filter((m) => !m.tmdb_id).length,
+    [watchlist, watched],
+  );
+
   const handleMarkWatched = async (movie: Movie) => {
     const ok = await markWatched(movie.id);
     if (ok) {
@@ -72,35 +80,32 @@ export function CinemaTab() {
 
   return (
     <div className="flex flex-col pb-24 animate-in fade-in duration-300">
-      <SectionHeader
-        brand="CinemaZ"
-        title="Кино"
-        rightSlot={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setGuessOpen(true)}
-              className="active:scale-95 w-9 h-9 rounded-lg bg-purple-500/15 border border-purple-500/40 text-purple-200 hover:bg-purple-500/25 flex items-center justify-center transition-all"
-              title="Угадай фильм"
-            >
-              <Search className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setRecOpen(true)}
-              className="active:scale-95 px-3 py-1.5 rounded-lg bg-purple-500/15 border border-purple-500/40 text-purple-200 hover:bg-purple-500/25 text-xs font-medium transition-all flex items-center gap-1.5"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              Что посмотреть
-            </button>
-            <button
-              onClick={() => setAddOpen(true)}
-              className="active:scale-95 w-9 h-9 rounded-lg bg-magenta-500/15 border border-magenta-500/40 text-magenta-200 hover:bg-magenta-500/25 flex items-center justify-center transition-all"
-              title="Добавить"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
-        }
-      />
+      <SectionHeader brand="CinemaZ" title="Кино" />
+
+      {/* Primary action bar — clear labels, full-width buttons. */}
+      <div className="mx-2 mt-2 grid grid-cols-3 gap-2">
+        <button
+          onClick={() => setAddOpen(true)}
+          className="active:scale-95 flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl bg-magenta-500/15 border border-magenta-500/40 text-magenta-200 hover:bg-magenta-500/25 transition-all"
+        >
+          <Plus className="w-4 h-4" />
+          <span className="text-[11px] font-medium leading-none">Добавить</span>
+        </button>
+        <button
+          onClick={() => setRecOpen(true)}
+          className="active:scale-95 flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl bg-purple-500/15 border border-purple-500/40 text-purple-200 hover:bg-purple-500/25 transition-all"
+        >
+          <Sparkles className="w-4 h-4" />
+          <span className="text-[11px] font-medium leading-none">Что посмотреть</span>
+        </button>
+        <button
+          onClick={() => setGuessOpen(true)}
+          className="active:scale-95 flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl bg-cyan-500/15 border border-cyan-500/40 text-cyan-200 hover:bg-cyan-500/25 transition-all"
+        >
+          <Gamepad2 className="w-4 h-4" />
+          <span className="text-[11px] font-medium leading-none">Угадай фильм</span>
+        </button>
+      </div>
 
       {/* Sub-tabs */}
       <div className="mx-2 mt-2 flex gap-2">
@@ -138,20 +143,30 @@ export function CinemaTab() {
         )}
 
         {!loading && subTab === 'watchlist' && (
-          <MoviesList
-            movies={watchlist}
-            emptyText="Пока тут пусто. Добавь первый фильм 🎬"
-            onMarkWatched={handleMarkWatched}
-            onClick={(m) => setDetailsFor(m)}
-          />
+          <>
+            {missingCount > 0 && (
+              <BackfillBanner missingCount={missingCount} onDone={loadAll} />
+            )}
+            <MoviesList
+              movies={watchlist}
+              emptyText="Пока тут пусто. Добавь первый фильм 🎬"
+              onMarkWatched={handleMarkWatched}
+              onClick={(m) => setDetailsFor(m)}
+            />
+          </>
         )}
 
         {!loading && subTab === 'watched' && (
-          <MoviesList
-            movies={watched}
-            emptyText="Ничего ещё не отмечено как просмотренное."
-            onClick={(m) => setDetailsFor(m)}
-          />
+          <>
+            {missingCount > 0 && (
+              <BackfillBanner missingCount={missingCount} onDone={loadAll} />
+            )}
+            <MoviesList
+              movies={watched}
+              emptyText="Ничего ещё не отмечено как просмотренное."
+              onClick={(m) => setDetailsFor(m)}
+            />
+          </>
         )}
 
         {subTab === 'premieres' && <PremieresList onAdded={loadAll} />}
