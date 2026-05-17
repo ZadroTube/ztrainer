@@ -251,6 +251,33 @@ export function cinemaExplain(tmdbId: number, mode: ExplainMode, signal?: AbortS
 }
 
 // ---------------------------------------------------------------------------
+// Cinema guess game
+// ---------------------------------------------------------------------------
+
+export interface NewRiddle {
+  riddle_id: string;
+  riddle: string;
+}
+
+export interface CheckGuessResponse {
+  correct: boolean;
+  message: string;
+  correct_title?: string;
+}
+
+export function cinemaGuessNew(signal?: AbortSignal): Promise<NewRiddle> {
+  return request('/api/cinema/guess/new', { method: 'POST', signal });
+}
+
+export function cinemaGuessCheck(riddleId: string, answer: string, signal?: AbortSignal): Promise<CheckGuessResponse> {
+  return request('/api/cinema/guess/check', { method: 'POST', body: { riddle_id: riddleId, answer }, signal });
+}
+
+export function cinemaGuessReveal(riddleId: string, signal?: AbortSignal): Promise<{ correct_title: string }> {
+  return request('/api/cinema/guess/reveal', { method: 'POST', body: { riddle_id: riddleId }, signal });
+}
+
+// ---------------------------------------------------------------------------
 // News
 // ---------------------------------------------------------------------------
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Film, Plus, Sparkles, Calendar, Star } from 'lucide-react';
+import { Film, Plus, Sparkles, Calendar, Star, Search } from 'lucide-react';
 import { SectionHeader } from '@/components/layout/SectionHeader';
 import { MovieCard } from '@/components/cinema/MovieCard';
 import { AddMovieModal } from '@/components/cinema/AddMovieModal';
@@ -7,6 +7,7 @@ import { RecommendModal } from '@/components/cinema/RecommendModal';
 import { RatingModal } from '@/components/cinema/RatingModal';
 import { MovieDetailsModal } from '@/components/cinema/MovieDetailsModal';
 import { PremiereDetailsModal } from '@/components/cinema/PremiereDetailsModal';
+import { GuessGameModal } from '@/components/cinema/GuessGameModal';
 import {
   listMovies,
   markWatched,
@@ -29,6 +30,7 @@ export function CinemaTab() {
   const [recOpen, setRecOpen] = useState(false);
   const [ratingFor, setRatingFor] = useState<Movie | null>(null);
   const [detailsFor, setDetailsFor] = useState<Movie | null>(null);
+  const [guessOpen, setGuessOpen] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -75,6 +77,13 @@ export function CinemaTab() {
         title="Кино"
         rightSlot={
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setGuessOpen(true)}
+              className="active:scale-95 w-9 h-9 rounded-lg bg-purple-500/15 border border-purple-500/40 text-purple-200 hover:bg-purple-500/25 flex items-center justify-center transition-all"
+              title="Угадай фильм"
+            >
+              <Search className="w-4 h-4" />
+            </button>
             <button
               onClick={() => setRecOpen(true)}
               className="active:scale-95 px-3 py-1.5 rounded-lg bg-purple-500/15 border border-purple-500/40 text-purple-200 hover:bg-purple-500/25 text-xs font-medium transition-all flex items-center gap-1.5"
@@ -179,6 +188,7 @@ export function CinemaTab() {
           onSaved={loadAll}
         />
       )}
+      {guessOpen && <GuessGameModal onClose={() => setGuessOpen(false)} />}
     </div>
   );
 }
