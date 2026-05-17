@@ -1,26 +1,37 @@
 /**
  * Client for the Family Telegram Bot HTTP API (Flask, hosted on Render).
  *
- * Authentication: every request carries `Authorization: tma <initData>`
- * where <initData> is the raw query string from `Telegram.WebApp.initData`.
- * The bot validates the HMAC signature with its bot token (same algorithm
- * the Supabase Edge Function uses for `telegram-auth`).
+ * Authentication strategy (the bot accepts either):
+ *  1. `Authorization: tma <initData>` — when opened inside Telegram Mini App.
+ *     The bot validates the HMAC signature with its bot token (same algo as
+ *     the Supabase Edge Function `telegram-auth`).
+ *  2. `Authorization: Bearer <supabase_jwt>` — when opened in a browser via
+ *     the Login Widget. The bot trusts the JWT after verifying it with the
+ *     Supabase JWKS / shared secret and reads telegram_id from `profiles`.
  *
- * All requests are JSON in / JSON out. Errors are surfaced as thrown
- * exceptions with a meaningful message.
+ * All requests are JSON in / JSON out.
  */
+import { supabase } from '@/lib/supabase';
 
 const BOT_API_BASE =
   (import.meta.env.VITE_BOT_API_URL as string | undefined) ??
   'https://my-family-bot-yyo9.onrender.com';
 
-function getInitData(): string {
-  // window.Telegram.WebApp is created by telegram-web-app.js — see index.html.
+async function getAuthHeader(): Promise<string> {
+  // Prefer Telegram WebApp initData (set inside the Telegram client).
   const initData = window.Telegram?.WebApp?.initData ?? '';
-  if (!initData) {
-    throw new Error('Telegram WebApp initData is empty — open the app from inside Telegram.');
+  if (initData) {
+    return `tma ${initData}`;
   }
-  return initData;
+
+  // Fallback: Supabase JWT (Login Widget flow on desktop browsers).
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (token) {
+    return `Bearer ${token}`;
+  }
+
+  throw new Error('No auth available — open the app from Telegram or sign in via the Login Widget.');
 }
 
 export class BotApiError extends Error {
@@ -38,14 +49,14 @@ interface RequestOptions {
 }
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const initData = getInitData();
+  const auth = await getAuthHeader();
   const url = `${BOT_API_BASE}${path}`;
 
   const res = await fetch(url, {
     method: opts.method ?? 'GET',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `tma ${initData}`,
+      Authorization: auth,
     },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
     signal: opts.signal,

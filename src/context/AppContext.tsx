@@ -184,7 +184,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const [activeTab, setActiveTab] = useState<TabName>('fitness');
+  const [activeTab, setActiveTab] = useState<TabName>('home');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [viewMode, setViewMode] = useState<'plan' | 'diary'>('plan');
 
