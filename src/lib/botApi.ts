@@ -190,3 +190,56 @@ export interface TodayResponse {
 export function fetchToday(signal?: AbortSignal): Promise<TodayResponse> {
   return request<TodayResponse>('/api/today', { signal });
 }
+
+// ---------------------------------------------------------------------------
+// Cinema (TMDB via bot)
+// ---------------------------------------------------------------------------
+
+export interface TmdbMovie {
+  tmdb_id: number;
+  title: string;
+  year: string;
+  overview: string;
+  rating: number;
+  poster_url: string;
+  genre_ids?: number[];
+}
+
+export interface TmdbDetails extends TmdbMovie {
+  trailer_url: string;
+  duration: string;
+  genres: string[];
+  media_type: string;
+}
+
+export interface PremiereMovie {
+  id: number;
+  title: string;
+  release_date: string;
+  vote_average: number;
+  overview: string;
+  poster_url: string;
+}
+
+export type CinemaMood = 'funny' | 'scary' | 'heartfelt' | 'mind' | 'action';
+
+export function cinemaSearch(query: string, signal?: AbortSignal): Promise<{ results: TmdbMovie[] }> {
+  return request(`/api/cinema/search?q=${encodeURIComponent(query)}`, { signal });
+}
+
+export function cinemaSurprise(signal?: AbortSignal): Promise<{ movie: TmdbMovie | null }> {
+  return request('/api/cinema/surprise', { signal });
+}
+
+export function cinemaRecommend(mood: CinemaMood, short = false, signal?: AbortSignal): Promise<{ movies: TmdbMovie[] }> {
+  const q = `mood=${mood}&short=${short ? 'true' : 'false'}`;
+  return request(`/api/cinema/recommend?${q}`, { signal });
+}
+
+export function cinemaPremieres(signal?: AbortSignal): Promise<{ movies: PremiereMovie[] }> {
+  return request('/api/cinema/premieres', { signal });
+}
+
+export function cinemaDetails(tmdbId: number, signal?: AbortSignal): Promise<TmdbDetails> {
+  return request(`/api/cinema/details?tmdb_id=${tmdbId}`, { signal });
+}
