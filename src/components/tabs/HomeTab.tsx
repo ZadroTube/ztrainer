@@ -7,9 +7,10 @@ import { TodaySummary } from '@/components/hub/TodaySummary';
 import { TarotModal } from '@/components/hub/TarotModal';
 import { HoroscopeModal } from '@/components/hub/HoroscopeModal';
 import { ImageGenModal } from '@/components/hub/ImageGenModal';
-import { HelpCircle, X, Sparkles, Stars, Smile, Brush, Loader2, Check } from 'lucide-react';
+import { NewsModal } from '@/components/hub/NewsModal';
+import { HelpCircle, X, Sparkles, Stars, Smile, Brush, Loader2, Check, Newspaper } from 'lucide-react';
 
-type ModalKind = 'about' | 'tarot' | 'horoscope' | 'image' | null;
+type ModalKind = 'about' | 'tarot' | 'horoscope' | 'image' | 'news' | null;
 
 export function HomeTab() {
   const { userProfile } = useUIContext();
@@ -66,6 +67,13 @@ export function HomeTab() {
           onClick={() => setModal('horoscope')}
         />
         <ActionTile
+          icon={<Newspaper className="w-5 h-5" />}
+          title="Новости"
+          subtitle="Иркутск, мир, по теме"
+          accent="purple"
+          onClick={() => setModal('news')}
+        />
+        <ActionTile
           icon={
             memesState === 'sending' ? <Loader2 className="w-5 h-5 animate-spin" /> :
             memesState === 'sent' ? <Check className="w-5 h-5" /> :
@@ -101,6 +109,7 @@ export function HomeTab() {
       {modal === 'tarot' && <TarotModal onClose={() => setModal(null)} />}
       {modal === 'horoscope' && <HoroscopeModal onClose={() => setModal(null)} />}
       {modal === 'image' && <ImageGenModal onClose={() => setModal(null)} />}
+      {modal === 'news' && <NewsModal onClose={() => setModal(null)} />}
     </div>
   );
 }

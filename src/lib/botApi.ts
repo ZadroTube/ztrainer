@@ -243,3 +243,28 @@ export function cinemaPremieres(signal?: AbortSignal): Promise<{ movies: Premier
 export function cinemaDetails(tmdbId: number, signal?: AbortSignal): Promise<TmdbDetails> {
   return request(`/api/cinema/details?tmdb_id=${tmdbId}`, { signal });
 }
+
+// ---------------------------------------------------------------------------
+// News
+// ---------------------------------------------------------------------------
+
+export type NewsSource = 'irkutsk' | 'world';
+
+export interface NewsItem {
+  title: string;
+  /** RBC/irk.ru summary or AI-written summary for topic search. */
+  summary?: string;
+  /** Topic-search items use `description` instead of `summary` (raw shape from search_news_by_topic). */
+  description?: string;
+  link: string;
+  /** Topic-search items also carry the source name. */
+  source?: string;
+}
+
+export function fetchTopNews(source: NewsSource, signal?: AbortSignal): Promise<{ items: NewsItem[]; cached: boolean }> {
+  return request(`/api/news/top?source=${source}`, { signal });
+}
+
+export function fetchTopicNews(topic: string, signal?: AbortSignal): Promise<{ items: NewsItem[] }> {
+  return request(`/api/news/topic?q=${encodeURIComponent(topic)}`, { signal });
+}
