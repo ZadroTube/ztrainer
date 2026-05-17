@@ -268,3 +268,28 @@ export function fetchTopNews(source: NewsSource, signal?: AbortSignal): Promise<
 export function fetchTopicNews(topic: string, signal?: AbortSignal): Promise<{ items: NewsItem[] }> {
   return request(`/api/news/topic?q=${encodeURIComponent(topic)}`, { signal });
 }
+
+// ---------------------------------------------------------------------------
+// AI-known profile (the dossier the bot keeps about the user)
+// ---------------------------------------------------------------------------
+
+export interface MeProfileResponse {
+  profile: string;
+  zodiac: string | null;
+}
+
+export function fetchMeProfile(signal?: AbortSignal): Promise<MeProfileResponse> {
+  return request<MeProfileResponse>('/api/me/profile', { signal });
+}
+
+export function addProfileFact(fact: string, signal?: AbortSignal): Promise<{ profile: string }> {
+  return request('/api/me/profile/fact', { method: 'POST', body: { fact }, signal });
+}
+
+export function clearProfile(signal?: AbortSignal): Promise<{ ok: boolean }> {
+  return request('/api/me/profile/clear', { method: 'POST', signal });
+}
+
+export function fetchMeSummary(signal?: AbortSignal): Promise<{ text: string }> {
+  return request('/api/me/summary', { signal });
+}
