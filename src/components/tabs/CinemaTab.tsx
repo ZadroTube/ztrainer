@@ -5,6 +5,7 @@ import { MovieCard } from '@/components/cinema/MovieCard';
 import { AddMovieModal } from '@/components/cinema/AddMovieModal';
 import { RecommendModal } from '@/components/cinema/RecommendModal';
 import { RatingModal } from '@/components/cinema/RatingModal';
+import { MovieDetailsModal } from '@/components/cinema/MovieDetailsModal';
 import {
   listMovies,
   markWatched,
@@ -26,6 +27,7 @@ export function CinemaTab() {
   const [addOpen, setAddOpen] = useState(false);
   const [recOpen, setRecOpen] = useState(false);
   const [ratingFor, setRatingFor] = useState<Movie | null>(null);
+  const [detailsFor, setDetailsFor] = useState<Movie | null>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -45,10 +47,13 @@ export function CinemaTab() {
   const handleMarkWatched = async (movie: Movie) => {
     const ok = await markWatched(movie.id);
     if (ok) {
-      // Optimistic move + open rating modal
+      const moved: Movie = { ...movie, status: STATUS_WATCHED, watch_date: new Date().toISOString().slice(0, 10) };
+      // Optimistic move
       setWatchlist((prev) => prev.filter((m) => m.id !== movie.id));
-      setWatched((prev) => [{ ...movie, status: STATUS_WATCHED, watch_date: new Date().toISOString().slice(0, 10) }, ...prev]);
-      setRatingFor({ ...movie, status: STATUS_WATCHED });
+      setWatched((prev) => [moved, ...prev]);
+      // Close details (if open) and open rating
+      setDetailsFor(null);
+      setRatingFor(moved);
     }
   };
 
@@ -58,6 +63,7 @@ export function CinemaTab() {
     if (ok) {
       setWatchlist((prev) => prev.filter((m) => m.id !== movie.id));
       setWatched((prev) => prev.filter((m) => m.id !== movie.id));
+      setDetailsFor(null);
     }
   };
 
@@ -126,7 +132,7 @@ export function CinemaTab() {
             movies={watchlist}
             emptyText="Пока тут пусто. Добавь первый фильм 🎬"
             onMarkWatched={handleMarkWatched}
-            onDelete={handleDelete}
+            onClick={(m) => setDetailsFor(m)}
           />
         )}
 
@@ -134,8 +140,7 @@ export function CinemaTab() {
           <MoviesList
             movies={watched}
             emptyText="Ничего ещё не отмечено как просмотренное."
-            onClick={(m) => setRatingFor(m)}
-            onDelete={handleDelete}
+            onClick={(m) => setDetailsFor(m)}
           />
         )}
 
@@ -152,6 +157,18 @@ export function CinemaTab() {
         <RecommendModal
           onClose={() => setRecOpen(false)}
           onAdded={loadAll}
+        />
+      )}
+      {detailsFor && (
+        <MovieDetailsModal
+          movie={detailsFor}
+          onClose={() => setDetailsFor(null)}
+          onMarkWatched={detailsFor.status === STATUS_WATCHLIST ? () => handleMarkWatched(detailsFor) : undefined}
+          onRate={detailsFor.status === STATUS_WATCHED ? () => {
+            setRatingFor(detailsFor);
+            setDetailsFor(null);
+          } : undefined}
+          onDelete={() => handleDelete(detailsFor)}
         />
       )}
       {ratingFor && (
@@ -213,13 +230,11 @@ function MoviesList({
   emptyText,
   onMarkWatched,
   onClick,
-  onDelete,
 }: {
   movies: Movie[];
   emptyText: string;
   onMarkWatched?: (m: Movie) => void;
   onClick?: (m: Movie) => void;
-  onDelete?: (m: Movie) => void;
 }) {
   if (movies.length === 0) {
     return (
@@ -238,8 +253,8 @@ function MoviesList({
         <MovieCard
           key={m.id}
           movie={m}
-          onMarkWatched={onMarkWatched ? () => onMarkWatched(m) : undefined}
-          onDelete={onDelete ? () => onDelete(m) : undefined}
+          quickActionLabel={onMarkWatched ? 'Посмотрели' : undefined}
+          onQuickAction={onMarkWatched ? () => onMarkWatched(m) : undefined}
           onClick={onClick ? () => onClick(m) : undefined}
         />
       ))}

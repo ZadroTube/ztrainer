@@ -1,19 +1,21 @@
-import { Film, Star, Clock, Trash2, Check } from 'lucide-react';
+import { Film, Star, Clock } from 'lucide-react';
 import { type Movie, STATUS_WATCHED } from '@/lib/cinema';
 
 interface MovieCardProps {
   movie: Movie;
-  /** Show "watched" check button (only for watchlist items). */
-  onMarkWatched?: () => void;
-  onDelete?: () => void;
+  /** Optional quick-action button — usually "mark as watched" — overlayed
+   * on the card. Tapping it doesn't open details. */
+  quickActionLabel?: string;
+  onQuickAction?: () => void;
   onClick?: () => void;
 }
 
 /**
- * Compact movie card used in the watchlist / watched lists.
- * Poster + title + meta + actions. Matches the neon glassmorphism of the rest of the app.
+ * Compact movie card. Tapping the body opens the details modal. The
+ * optional quick-action button (e.g. "Посмотрели") sits on the right
+ * and stops propagation.
  */
-export function MovieCard({ movie, onMarkWatched, onDelete, onClick }: MovieCardProps) {
+export function MovieCard({ movie, quickActionLabel, onQuickAction, onClick }: MovieCardProps) {
   const isWatched = movie.status === STATUS_WATCHED;
 
   return (
@@ -31,7 +33,7 @@ export function MovieCard({ movie, onMarkWatched, onDelete, onClick }: MovieCard
           )}
         </div>
 
-        <div className="flex-1 min-w-0 py-2 pr-2">
+        <div className="flex-1 min-w-0 py-2 pr-3 flex flex-col">
           <h3 className="text-sm font-bold text-white line-clamp-2 leading-tight">{movie.title}</h3>
 
           <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
@@ -57,35 +59,36 @@ export function MovieCard({ movie, onMarkWatched, onDelete, onClick }: MovieCard
           )}
 
           {isWatched && (movie.husband_rating || movie.wife_rating) && (
-            <div className="mt-1 flex items-center gap-2 text-[10px]">
+            <div className="mt-auto pt-2 flex items-center gap-2 text-[10px]">
               {movie.husband_rating && <span className="text-cyan-300">👨 {movie.husband_rating}</span>}
               {movie.wife_rating && <span className="text-magenta-300">👩 {movie.wife_rating}</span>}
             </div>
           )}
+
+          {quickActionLabel && onQuickAction && (
+            <div className="mt-auto pt-2">
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onQuickAction();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onQuickAction();
+                  }
+                }}
+                className="inline-flex items-center gap-1 active:scale-95 text-[11px] font-medium px-2.5 py-1 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/25 transition-all cursor-pointer"
+              >
+                ✓ {quickActionLabel}
+              </span>
+            </div>
+          )}
         </div>
       </button>
-
-      {(onMarkWatched || onDelete) && (
-        <div className="flex items-center gap-2 px-3 pb-3 pt-1">
-          {onMarkWatched && !isWatched && (
-            <button
-              onClick={onMarkWatched}
-              className="flex-1 active:scale-95 px-3 py-1.5 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-xs font-medium hover:bg-cyan-500/25 transition-all flex items-center justify-center gap-1"
-            >
-              <Check className="w-3.5 h-3.5" /> Посмотрели
-            </button>
-          )}
-          {onDelete && (
-            <button
-              onClick={onDelete}
-              className="active:scale-95 w-8 h-8 rounded-lg bg-slate-800/60 border border-slate-700 text-slate-400 hover:text-red-300 hover:border-red-500/40 transition-all flex items-center justify-center"
-              title="Удалить"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }
