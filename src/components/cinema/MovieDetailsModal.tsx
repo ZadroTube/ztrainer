@@ -1,5 +1,7 @@
-import { X, Film, Star, Clock, Calendar, Play, Check, Trash2, Edit3 } from 'lucide-react';
+import { X, Film, Star, Clock, Calendar, Play, Check, Trash2, Edit3, BookOpen } from 'lucide-react';
+import { useState } from 'react';
 import { type Movie, STATUS_WATCHED } from '@/lib/cinema';
+import { ExplainModal } from '@/components/cinema/ExplainModal';
 
 interface MovieDetailsModalProps {
   movie: Movie;
@@ -18,6 +20,7 @@ interface MovieDetailsModalProps {
 export function MovieDetailsModal({ movie, onClose, onMarkWatched, onRate, onDelete }: MovieDetailsModalProps) {
   const isWatched = movie.status === STATUS_WATCHED;
   const ratingText = movie.rating ?? null;
+  const [explainOpen, setExplainOpen] = useState(false);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 animate-in fade-in duration-200" onClick={onClose}>
@@ -149,6 +152,17 @@ export function MovieDetailsModal({ movie, onClose, onMarkWatched, onRate, onDel
               Смотреть трейлер
             </a>
           )}
+
+          {/* Explain via AI — only useful when we have a TMDB id */}
+          {movie.tmdb_id && (
+            <button
+              onClick={() => setExplainOpen(true)}
+              className="mt-2 active:scale-95 w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-purple-500/15 border border-purple-500/30 hover:border-purple-400/60 text-sm font-medium text-purple-200 transition-all"
+            >
+              <BookOpen className="w-4 h-4" />
+              Объяснить фильм
+            </button>
+          )}
         </div>
 
         {/* Action bar */}
@@ -182,6 +196,14 @@ export function MovieDetailsModal({ movie, onClose, onMarkWatched, onRate, onDel
           )}
         </div>
       </div>
+
+      {explainOpen && movie.tmdb_id && (
+        <ExplainModal
+          tmdbId={movie.tmdb_id}
+          title={movie.title}
+          onClose={() => setExplainOpen(false)}
+        />
+      )}
     </div>
   );
 }

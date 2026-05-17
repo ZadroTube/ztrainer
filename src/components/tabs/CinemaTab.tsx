@@ -6,6 +6,7 @@ import { AddMovieModal } from '@/components/cinema/AddMovieModal';
 import { RecommendModal } from '@/components/cinema/RecommendModal';
 import { RatingModal } from '@/components/cinema/RatingModal';
 import { MovieDetailsModal } from '@/components/cinema/MovieDetailsModal';
+import { PremiereDetailsModal } from '@/components/cinema/PremiereDetailsModal';
 import {
   listMovies,
   markWatched,
@@ -144,7 +145,7 @@ export function CinemaTab() {
           />
         )}
 
-        {subTab === 'premieres' && <PremieresList />}
+        {subTab === 'premieres' && <PremieresList onAdded={loadAll} />}
       </div>
 
       {addOpen && (
@@ -262,9 +263,10 @@ function MoviesList({
   );
 }
 
-function PremieresList() {
+function PremieresList({ onAdded }: { onAdded?: () => void }) {
   const [movies, setMovies] = useState<PremiereMovie[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<PremiereMovie | null>(null);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -295,30 +297,44 @@ function PremieresList() {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3">
-      {movies.map((m) => (
-        <div key={m.id} className="glass rounded-2xl border border-purple-500/20 overflow-hidden">
-          <div className="aspect-[2/3] bg-slate-900/60 flex items-center justify-center overflow-hidden">
-            {m.poster_url ? (
-              <img src={m.poster_url} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <Film className="w-8 h-8 text-slate-600" />
-            )}
-          </div>
-          <div className="p-2.5">
-            <div className="text-xs font-bold text-white line-clamp-2 leading-tight min-h-[2.4em]">{m.title}</div>
-            <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-2">
-              {m.release_date && <span>{m.release_date}</span>}
-              {m.vote_average > 0 && (
-                <span className="inline-flex items-center gap-0.5 text-amber-300">
-                  <Star className="w-3 h-3 fill-amber-300" />
-                  {m.vote_average.toFixed(1)}
-                </span>
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        {movies.map((m) => (
+          <button
+            key={m.id}
+            onClick={() => setSelected(m)}
+            className="active:scale-[0.97] glass rounded-2xl border border-purple-500/20 hover:border-purple-400/50 overflow-hidden text-left transition-all"
+          >
+            <div className="aspect-[2/3] bg-slate-900/60 flex items-center justify-center overflow-hidden">
+              {m.poster_url ? (
+                <img src={m.poster_url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <Film className="w-8 h-8 text-slate-600" />
               )}
             </div>
-          </div>
-        </div>
-      ))}
-    </div>
+            <div className="p-2.5">
+              <div className="text-xs font-bold text-white line-clamp-2 leading-tight min-h-[2.4em]">{m.title}</div>
+              <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-2">
+                {m.release_date && <span>{m.release_date}</span>}
+                {m.vote_average > 0 && (
+                  <span className="inline-flex items-center gap-0.5 text-amber-300">
+                    <Star className="w-3 h-3 fill-amber-300" />
+                    {m.vote_average.toFixed(1)}
+                  </span>
+                )}
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {selected && (
+        <PremiereDetailsModal
+          movie={selected}
+          onClose={() => setSelected(null)}
+          onAdded={onAdded}
+        />
+      )}
+    </>
   );
 }

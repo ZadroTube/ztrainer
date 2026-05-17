@@ -244,6 +244,12 @@ export function cinemaDetails(tmdbId: number, signal?: AbortSignal): Promise<Tmd
   return request(`/api/cinema/details?tmdb_id=${tmdbId}`, { signal });
 }
 
+export type ExplainMode = 'plot' | 'ending';
+
+export function cinemaExplain(tmdbId: number, mode: ExplainMode, signal?: AbortSignal): Promise<{ text: string }> {
+  return request(`/api/cinema/explain?tmdb_id=${tmdbId}&mode=${mode}`, { signal });
+}
+
 // ---------------------------------------------------------------------------
 // News
 // ---------------------------------------------------------------------------
