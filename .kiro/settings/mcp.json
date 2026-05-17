@@ -1,0 +1,63 @@
+{
+  "$comment": "Workspace-level MCP servers for ZTrainer. Tokens read from environment to keep secrets out of git.",
+  "mcpServers": {
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--read-only",
+        "--project-ref=zcirdncgxliympzhjxiu"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "list_tables",
+        "list_extensions",
+        "execute_sql",
+        "list_migrations",
+        "get_project_url",
+        "get_anon_key"
+      ]
+    },
+
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "search_code",
+        "search_repositories",
+        "list_issues",
+        "list_pull_requests",
+        "get_file_contents"
+      ]
+    },
+
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"],
+      "disabled": false,
+      "autoApprove": ["resolve-library-id", "get-library-docs"]
+    },
+
+    "repomix": {
+      "command": "npx",
+      "args": ["-y", "repomix", "--mcp"],
+      "disabled": false,
+      "autoApprove": ["pack_codebase", "pack_remote_repository"]
+    },
+
+    "grep": {
+      "command": "npx",
+      "args": ["-y", "grep-mcp"],
+      "disabled": false,
+      "autoApprove": ["grep_search"]
+    }
+  }
+}
