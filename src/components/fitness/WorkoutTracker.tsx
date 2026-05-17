@@ -59,7 +59,7 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise, dateStr: string, isDiaryMode
 
   return (
     <div className={cn(
-      "glass rounded-2xl overflow-hidden transition-all duration-300 border-l-4",
+      "glass-perf rounded-2xl overflow-hidden transition-all duration-300 border-l-4",
       allComplete 
         ? "border-l-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.15)] opacity-60" 
         : "border-l-cyan-500",
@@ -204,7 +204,7 @@ export function WorkoutTracker() {
     
     return (
       <div className="space-y-4 pb-8 animate-in fade-in duration-300">
-        <div className="glass rounded-xl p-4 border border-slate-700/50 flex justify-between items-center bg-slate-800/20">
+        <div className="glass-perf rounded-xl p-4 border border-slate-700/50 flex justify-between items-center bg-slate-800/20">
           <div>
             <h3 className="text-sm font-bold text-white capitalize">{format(selectedDate, 'EEEE, d MMMM', { locale: ru })}</h3>
             <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest">
@@ -235,7 +235,7 @@ export function WorkoutTracker() {
   if (todaysPlan.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center space-y-4 animate-in fade-in">
-        <div className="w-16 h-16 rounded-full glass flex items-center justify-center mb-2">
+        <div className="w-16 h-16 rounded-full glass-perf flex items-center justify-center mb-2">
           <Play className="w-6 h-6 text-slate-500 ml-1" />
         </div>
         <h3 className="text-lg font-bold text-slate-300">План пуст</h3>
@@ -249,7 +249,7 @@ export function WorkoutTracker() {
   if (filteredPlan.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center space-y-4 animate-in fade-in">
-        <div className="w-16 h-16 rounded-full glass border border-cyan-500/50 flex items-center justify-center mb-2 shadow-[0_0_20px_rgba(6,182,212,0.2)]">
+        <div className="w-16 h-16 rounded-full glass-perf border border-cyan-500/50 flex items-center justify-center mb-2 shadow-[0_0_20px_rgba(6,182,212,0.2)]">
           <Check className="w-6 h-6 text-cyan-400" />
         </div>
         <h3 className="text-lg font-bold text-slate-100">

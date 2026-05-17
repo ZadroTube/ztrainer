@@ -127,7 +127,7 @@ export function FitnessTab() {
                 "active:scale-95 flex flex-col items-center justify-center flex-shrink-0 min-w-[55px] md:min-w-[70px] h-16 rounded-2xl transition-all",
                 isSelected 
                   ? "bg-cyan-500/20 border border-cyan-500/50 text-cyan-400 shadow-[0_0_10px_rgba(14,165,233,0.2)]" 
-                  : "glass text-slate-300 hover:bg-slate-800/50"
+                  : "glass-perf text-slate-300 hover:bg-slate-800/50"
               )}
             >
               <span className={cn("text-[10px] md:text-xs", isSelected ? "" : "opacity-60")}>
@@ -149,7 +149,7 @@ export function FitnessTab() {
       </div>
 
       {/* Mode Switch (Plan / Diary) */}
-      <div className="flex bg-slate-900/50 p-1 rounded-xl glass border border-slate-700/50 mx-2">
+      <div className="flex bg-slate-900/50 p-1 rounded-xl glass-perf border border-slate-700/50 mx-2">
         <button 
           onClick={() => setViewMode('plan')}
           className={cn(
@@ -182,7 +182,7 @@ export function FitnessTab() {
             "active:scale-95 flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all text-sm",
             activeSubTab === 'tracker'
               ? "bg-slate-800 border border-cyan-500/30 text-cyan-300 shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
-              : "bg-slate-900/50 text-slate-400 border border-transparent glass"
+              : "bg-slate-900/50 text-slate-400 border border-transparent glass-perf"
           )}
         >
           <Activity className="w-4 h-4" /> Трекер
@@ -193,7 +193,7 @@ export function FitnessTab() {
             "active:scale-95 flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all text-sm",
             activeSubTab === 'constructor'
               ? "bg-slate-800 border border-purple-500/30 text-purple-300 shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
-              : "bg-slate-900/50 text-slate-400 border border-transparent glass"
+              : "bg-slate-900/50 text-slate-400 border border-transparent glass-perf"
           )}
         >
           <CalendarIcon className="w-4 h-4" /> Билдер
@@ -204,7 +204,7 @@ export function FitnessTab() {
             "active:scale-95 flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all text-sm",
             activeSubTab === 'stats'
               ? "bg-slate-800 border border-magenta-500/30 text-magenta-300 shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
-              : "bg-slate-900/50 text-slate-400 border border-transparent glass"
+              : "bg-slate-900/50 text-slate-400 border border-transparent glass-perf"
           )}
         >
           <PieChart className="w-4 h-4" /> Статы
