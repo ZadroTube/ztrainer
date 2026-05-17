@@ -55,10 +55,28 @@ export interface CompletedSetRow {
   completed_at: string;
 }
 
+export interface WorkoutSessionRow {
+  id: string;
+  user_id: string;
+  plan_date: string;
+  duration_seconds: number;
+  finished_at: string;
+}
+
+export interface ExerciseRestRow {
+  id: string;
+  user_id: string;
+  workout_plan_id: string;
+  actual_rest_seconds: number;
+  recorded_at: string;
+}
+
 export interface RealtimeHandlers {
   onExerciseChange?: (payload: RealtimePostgresChangesPayload<ExerciseRow>) => void;
   onPlanChange?: (payload: RealtimePostgresChangesPayload<WorkoutPlanRow>) => void;
   onCompletedSetChange?: (payload: RealtimePostgresChangesPayload<CompletedSetRow>) => void;
+  onWorkoutSessionChange?: (payload: RealtimePostgresChangesPayload<WorkoutSessionRow>) => void;
+  onExerciseRestChange?: (payload: RealtimePostgresChangesPayload<ExerciseRestRow>) => void;
 }
 
 /**
@@ -90,6 +108,20 @@ export function subscribeFitnessRealtime(handlers: RealtimeHandlers): () => void
       'postgres_changes',
       { event: '*', schema: 'public', table: 'completed_sets' },
       (payload) => handlers.onCompletedSetChange?.(payload as RealtimePostgresChangesPayload<CompletedSetRow>),
+    );
+  }
+  if (handlers.onWorkoutSessionChange) {
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'workout_sessions' },
+      (payload) => handlers.onWorkoutSessionChange?.(payload as RealtimePostgresChangesPayload<WorkoutSessionRow>),
+    );
+  }
+  if (handlers.onExerciseRestChange) {
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'exercise_rests' },
+      (payload) => handlers.onExerciseRestChange?.(payload as RealtimePostgresChangesPayload<ExerciseRestRow>),
     );
   }
 

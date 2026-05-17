@@ -519,6 +519,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
           });
         }
       },
+
+      // Workout sessions: each row is a finished session worth N seconds.
+      // We aggregate by date in `dailyDurations`. INSERTs add to the date
+      // bucket; deletes / sweeps are rare but we recover-by-reload.
+      onWorkoutSessionChange: (payload) => {
+        const ev = payload.eventType;
+        if (ev === 'INSERT') {
+          const r = payload.new;
+          setDailyDurations(prev => ({
+            ...prev,
+            [r.plan_date]: (prev[r.plan_date] ?? 0) + (r.duration_seconds || 0),
+          }));
+        } else if (ev === 'DELETE') {
+          // Without aggregating context, the safest move is a soft refresh:
+          // realtime DELETE payload doesn't carry duration_seconds, so we'd
+          // need to refetch. Keep this no-op for now — manual reload covers it.
+        }
+      },
+
+      // Exercise rests: aggregated per (date, workout_plan_id) in
+      // `actualExerciseRests`. INSERTs are the only typical event.
+      onExerciseRestChange: (payload) => {
+        const ev = payload.eventType;
+        if (ev === 'INSERT') {
+          const r = payload.new;
+          const recorded = (r.recorded_at || '').slice(0, 10) || format(new Date(), 'yyyy-MM-dd');
+          const key = `${recorded}_${r.workout_plan_id}`;
+          setActualExerciseRests(prev => ({
+            ...prev,
+            [key]: (prev[key] ?? 0) + (r.actual_rest_seconds || 0),
+          }));
+        }
+      },
     });
 
     return unsubscribe;
