@@ -122,3 +122,71 @@ export interface WeatherResponse {
 export function fetchWeather(signal?: AbortSignal): Promise<WeatherResponse> {
   return request<WeatherResponse>('/api/weather', { signal });
 }
+
+// ---------------------------------------------------------------------------
+// Tarot
+// ---------------------------------------------------------------------------
+
+export interface TarotResponse {
+  cached: boolean;
+  date?: string;
+  card_name?: string;
+  text?: string;
+}
+
+export function fetchTarot(signal?: AbortSignal): Promise<TarotResponse> {
+  return request<TarotResponse>('/api/tarot', { signal });
+}
+
+export function pullTarot(signal?: AbortSignal): Promise<TarotResponse> {
+  return request<TarotResponse>('/api/tarot', { method: 'POST', signal });
+}
+
+// ---------------------------------------------------------------------------
+// Horoscope
+// ---------------------------------------------------------------------------
+
+export interface HoroscopeResponse {
+  zodiac: string | null;
+  text?: string;
+  cached?: boolean;
+  error?: string;
+}
+
+export function fetchHoroscope(signal?: AbortSignal): Promise<HoroscopeResponse> {
+  return request<HoroscopeResponse>('/api/horoscope', { signal });
+}
+
+export type ZodiacSign =
+  | 'aries' | 'taurus' | 'gemini' | 'cancer' | 'leo' | 'virgo'
+  | 'libra' | 'scorpio' | 'sagittarius' | 'capricorn' | 'aquarius' | 'pisces';
+
+export function setZodiac(zodiac: ZodiacSign, signal?: AbortSignal): Promise<{ ok: boolean; zodiac: string }> {
+  return request('/api/horoscope/zodiac', { method: 'POST', body: { zodiac }, signal });
+}
+
+// ---------------------------------------------------------------------------
+// Memes & images — bot delivers result to the chat.
+// ---------------------------------------------------------------------------
+
+export function sendMemes(signal?: AbortSignal): Promise<{ ok: boolean }> {
+  return request('/api/memes', { method: 'POST', signal });
+}
+
+export function generateImage(prompt: string, signal?: AbortSignal): Promise<{ ok: boolean }> {
+  return request('/api/image', { method: 'POST', body: { prompt }, signal });
+}
+
+// ---------------------------------------------------------------------------
+// Today summary
+// ---------------------------------------------------------------------------
+
+export interface TodayResponse {
+  workout_theme: string | null;
+  zodiac: string | null;
+  tarot_done: boolean;
+}
+
+export function fetchToday(signal?: AbortSignal): Promise<TodayResponse> {
+  return request<TodayResponse>('/api/today', { signal });
+}

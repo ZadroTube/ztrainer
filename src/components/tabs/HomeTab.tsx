@@ -1,19 +1,39 @@
 import { useEffect, useState } from 'react';
 import { useUIContext } from '@/context/AppContext';
 import { SectionHeader } from '@/components/layout/SectionHeader';
-import { fetchAbout, BotApiError } from '@/lib/botApi';
+import { fetchAbout, sendMemes, BotApiError } from '@/lib/botApi';
 import { WeatherWidget } from '@/components/hub/WeatherWidget';
-import { HelpCircle, X } from 'lucide-react';
+import { TodaySummary } from '@/components/hub/TodaySummary';
+import { TarotModal } from '@/components/hub/TarotModal';
+import { HoroscopeModal } from '@/components/hub/HoroscopeModal';
+import { ImageGenModal } from '@/components/hub/ImageGenModal';
+import { HelpCircle, X, Sparkles, Stars, Smile, Brush, Loader2, Check } from 'lucide-react';
 
-/**
- * Home (Hub) tab. Will host the weather widget, today summary, and quick
- * action tiles in upcoming sub-steps. For now it renders the unified
- * header + weather widget + a single working tile ("О боте") that proves
- * the bot HTTP API path works end-to-end.
- */
+type ModalKind = 'about' | 'tarot' | 'horoscope' | 'image' | null;
+
 export function HomeTab() {
   const { userProfile } = useUIContext();
-  const [aboutOpen, setAboutOpen] = useState(false);
+  const [modal, setModal] = useState<ModalKind>(null);
+
+  // Memes are fire-and-forget: we don't open a modal — just show a toast-like
+  // status pinned on the tile itself.
+  const [memesState, setMemesState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [memesError, setMemesError] = useState<string | null>(null);
+
+  const triggerMemes = async () => {
+    if (memesState === 'sending') return;
+    setMemesState('sending');
+    setMemesError(null);
+    try {
+      await sendMemes();
+      setMemesState('sent');
+      setTimeout(() => setMemesState('idle'), 4000);
+    } catch (e) {
+      setMemesState('error');
+      setMemesError(e instanceof BotApiError ? e.message : (e as Error).message);
+      setTimeout(() => setMemesState('idle'), 5000);
+    }
+  };
 
   return (
     <div className="flex flex-col pb-24 animate-in fade-in duration-300">
@@ -24,19 +44,63 @@ export function HomeTab() {
         <WeatherWidget />
       </section>
 
+      {/* Today summary */}
+      <section className="mx-2 mt-3">
+        <TodaySummary />
+      </section>
+
       {/* Quick action tiles */}
       <section className="mx-2 mt-4 grid grid-cols-2 gap-3">
+        <ActionTile
+          icon={<Sparkles className="w-5 h-5" />}
+          title="Карта Таро"
+          subtitle="Что приготовил день?"
+          accent="magenta"
+          onClick={() => setModal('tarot')}
+        />
+        <ActionTile
+          icon={<Stars className="w-5 h-5" />}
+          title="Гороскоп"
+          subtitle="Звёзды на сегодня"
+          accent="purple"
+          onClick={() => setModal('horoscope')}
+        />
+        <ActionTile
+          icon={
+            memesState === 'sending' ? <Loader2 className="w-5 h-5 animate-spin" /> :
+            memesState === 'sent' ? <Check className="w-5 h-5" /> :
+            <Smile className="w-5 h-5" />
+          }
+          title={
+            memesState === 'sending' ? 'Ищу мемы…' :
+            memesState === 'sent' ? 'Готово, смотри в чат' :
+            memesState === 'error' ? 'Не вышло' :
+            'Мемы'
+          }
+          subtitle={memesError ?? 'Лови порцию в чат'}
+          accent="cyan"
+          onClick={triggerMemes}
+        />
+        <ActionTile
+          icon={<Brush className="w-5 h-5" />}
+          title="Нарисовать"
+          subtitle="ИИ нарисует за тебя"
+          accent="cyan"
+          onClick={() => setModal('image')}
+        />
         <ActionTile
           icon={<HelpCircle className="w-5 h-5" />}
           title="О боте"
           subtitle="Что умеет ZadroTubikBot"
           accent="cyan"
-          onClick={() => setAboutOpen(true)}
+          onClick={() => setModal('about')}
         />
-        {/* More tiles will land here in 1.3 */}
       </section>
 
-      {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
+      {modal === 'about' && <AboutModal onClose={() => setModal(null)} />}
+      {modal === 'tarot' && <TarotModal onClose={() => setModal(null)} />}
+      {modal === 'horoscope' && <HoroscopeModal onClose={() => setModal(null)} />}
+      {modal === 'image' && <ImageGenModal onClose={() => setModal(null)} />}
     </div>
   );
 }
@@ -68,7 +132,7 @@ function ActionTile({ icon, title, subtitle, accent, onClick }: ActionTileProps)
       <div className="w-9 h-9 rounded-xl bg-slate-800/80 flex items-center justify-center">{icon}</div>
       <div>
         <div className="text-sm font-bold text-white">{title}</div>
-        {subtitle && <div className="text-[11px] text-slate-400 mt-0.5">{subtitle}</div>}
+        {subtitle && <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">{subtitle}</div>}
       </div>
     </button>
   );
