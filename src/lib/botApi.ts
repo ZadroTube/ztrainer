@@ -94,3 +94,31 @@ export interface AboutResponse {
 export function fetchAbout(signal?: AbortSignal): Promise<AboutResponse> {
   return request<AboutResponse>('/api/about', { signal });
 }
+
+export interface WeatherForecastSlot {
+  label: string;
+  time_hint: string;
+  temp: number;
+  description: string;
+  icon: string;
+}
+
+export interface WeatherResponse {
+  current: {
+    temp: number;
+    description: string;
+    icon: string;
+    code: number;
+  };
+  advice: string;
+  forecast: WeatherForecastSlot[];
+  location: {
+    name: string;
+    localtime: string;
+  };
+  ts: number;
+}
+
+export function fetchWeather(signal?: AbortSignal): Promise<WeatherResponse> {
+  return request<WeatherResponse>('/api/weather', { signal });
+}

@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { useUIContext } from '@/context/AppContext';
 import { SectionHeader } from '@/components/layout/SectionHeader';
 import { fetchAbout, BotApiError } from '@/lib/botApi';
-import { HelpCircle, Sparkles, X } from 'lucide-react';
+import { WeatherWidget } from '@/components/hub/WeatherWidget';
+import { HelpCircle, X } from 'lucide-react';
 
 /**
  * Home (Hub) tab. Will host the weather widget, today summary, and quick
  * action tiles in upcoming sub-steps. For now it renders the unified
- * header + a welcome card + a single working tile ("О боте") that proves
+ * header + weather widget + a single working tile ("О боте") that proves
  * the bot HTTP API path works end-to-end.
  */
 export function HomeTab() {
@@ -16,25 +17,11 @@ export function HomeTab() {
 
   return (
     <div className="flex flex-col pb-24 animate-in fade-in duration-300">
-      <SectionHeader brand="ZHub" title="Главная" />
+      <SectionHeader brand="ZHub" title={userProfile?.first_name ? `Привет, ${userProfile.first_name}` : 'Главная'} />
 
-      {/* Welcome card */}
+      {/* Weather widget */}
       <section className="mx-2 mt-2">
-        <div className="glass rounded-2xl p-5 border border-slate-700/50 relative overflow-hidden">
-          <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
-          <div className="relative">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-cyan-300/80 font-bold">
-              <Sparkles className="w-3.5 h-3.5" />
-              Добро пожаловать
-            </div>
-            <h2 className="text-xl font-bold text-white mt-1">
-              {userProfile?.first_name ? `Привет, ${userProfile.first_name}!` : 'Привет!'}
-            </h2>
-            <p className="text-sm text-slate-400 mt-1">
-              Здесь будет погода, сегодняшняя тренировка, мемы, гороскоп и ещё много всего.
-            </p>
-          </div>
-        </div>
+        <WeatherWidget />
       </section>
 
       {/* Quick action tiles */}
@@ -46,7 +33,7 @@ export function HomeTab() {
           accent="cyan"
           onClick={() => setAboutOpen(true)}
         />
-        {/* More tiles will land here in 1.2/1.3 */}
+        {/* More tiles will land here in 1.3 */}
       </section>
 
       {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
