@@ -4,7 +4,7 @@ import { ru } from 'date-fns/locale';
 import { useUIContext, useWorkoutData, useTimerContext } from '@/context/AppContext';
 import { cn } from '@/lib/utils';
 import {
-  Activity, Calendar as CalendarIcon, PieChart, Play, Pause, RotateCcw,
+  Activity, Wrench, PieChart, Play, Pause, RotateCcw,
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { WorkoutTracker } from '@/components/fitness/WorkoutTracker';
@@ -17,11 +17,7 @@ const FitnessStats = lazy(() =>
 
 /**
  * Header pill: live workout timer with pause/reset.
- *
- * Sits on the right side of the section header. Only renders something when
- * the user actually has a session in flight — otherwise the header is clean.
- * Visually quieter than before: no neon glow, no border-pulse, just a small
- * monospace pill with two icon buttons.
+ * Quiet visual style — no glow halos, just a small monospace pill.
  */
 function HeaderControls() {
   const {
@@ -80,10 +76,6 @@ function HeaderControls() {
 
 /**
  * Compact horizontal calendar strip with built-in month nav.
- *
- * Layout: month label centered above, day pills below with chevrons at the
- * very ends. Saves a whole row vs the previous "header / strip" stack and
- * keeps the prev/next buttons within thumb reach.
  */
 function CalendarStrip() {
   const { selectedDate, setSelectedDate } = useUIContext();
@@ -160,9 +152,35 @@ function CalendarStrip() {
   );
 }
 
+type SubTab = 'today' | 'plan' | 'progress';
+
+/**
+ * Top-level Fitness tab.
+ *
+ * After iteration 2 there are 3 sub-tabs:
+ *   - Сегодня:  active tracker. Auto-switches to diary view if the day is in
+ *               the past or already finished. The legacy "План/Дневник" toggle
+ *               is gone — the mode is implicit.
+ *   - План:     full builder (manage exercises + plan the day).
+ *   - Прогресс: stats.
+ *
+ * The implicit mode is exposed to WorkoutTracker via `viewMode` in context;
+ * we set it here based on the selected date and `dailyDurations`.
+ */
 export function FitnessTab() {
-  const { viewMode, setViewMode } = useUIContext();
-  const [activeSubTab, setActiveSubTab] = useState<'tracker' | 'constructor' | 'stats'>('tracker');
+  const { selectedDate, setViewMode } = useUIContext();
+  const { dailyDurations } = useWorkoutData();
+  const [subTab, setSubTab] = useState<SubTab>('today');
+
+  // Implicit mode: future/today empty → plan; today closed or past with history → diary.
+  const dateStr = format(selectedDate, 'yyyy-MM-dd');
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const isPast = dateStr < todayStr;
+  const isFinished = !!dailyDurations[dateStr];
+  const inferredMode: 'plan' | 'diary' = (isPast || isFinished) ? 'diary' : 'plan';
+  useEffect(() => {
+    setViewMode(inferredMode);
+  }, [inferredMode, setViewMode]);
 
   return (
     <div className="flex flex-col space-y-3 pb-24">
@@ -170,74 +188,35 @@ export function FitnessTab() {
 
       <CalendarStrip />
 
-      {/* Mode Switch (Plan / Diary) */}
-      <div className="flex bg-slate-900/50 p-1 rounded-xl glass-perf border border-slate-700/50 mx-2">
-        <button
-          onClick={() => setViewMode('plan')}
-          className={cn(
-            'active:scale-95 flex-1 py-1.5 text-sm transition-all rounded-lg',
-            viewMode === 'plan'
-              ? 'font-bold bg-slate-800 shadow-lg border border-slate-700 text-white'
-              : 'font-medium opacity-50 text-slate-200',
-          )}
-        >
-          План
-        </button>
-        <button
-          onClick={() => setViewMode('diary')}
-          className={cn(
-            'active:scale-95 flex-1 py-1.5 text-sm transition-all rounded-lg',
-            viewMode === 'diary'
-              ? 'font-bold bg-slate-800 shadow-lg border border-slate-700 text-white'
-              : 'font-medium opacity-50 text-slate-200',
-          )}
-        >
-          Дневник
-        </button>
-      </div>
-
-      {/* Sub-tabs Navigation */}
+      {/* Top-level subtabs — single source of navigation */}
       <div className="flex gap-2 mx-2">
-        <button
-          onClick={() => setActiveSubTab('tracker')}
-          className={cn(
-            'active:scale-95 flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all text-sm',
-            activeSubTab === 'tracker'
-              ? 'bg-slate-800 border border-cyan-500/30 text-cyan-300 shadow-[0_4px_10px_rgba(0,0,0,0.5)]'
-              : 'bg-slate-900/50 text-slate-400 border border-transparent glass-perf',
-          )}
-        >
-          <Activity className="w-4 h-4" /> Трекер
-        </button>
-        <button
-          onClick={() => setActiveSubTab('constructor')}
-          className={cn(
-            'active:scale-95 flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all text-sm',
-            activeSubTab === 'constructor'
-              ? 'bg-slate-800 border border-purple-500/30 text-purple-300 shadow-[0_4px_10px_rgba(0,0,0,0.5)]'
-              : 'bg-slate-900/50 text-slate-400 border border-transparent glass-perf',
-          )}
-        >
-          <CalendarIcon className="w-4 h-4" /> Билдер
-        </button>
-        <button
-          onClick={() => setActiveSubTab('stats')}
-          className={cn(
-            'active:scale-95 flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all text-sm',
-            activeSubTab === 'stats'
-              ? 'bg-slate-800 border border-magenta-500/30 text-magenta-300 shadow-[0_4px_10px_rgba(0,0,0,0.5)]'
-              : 'bg-slate-900/50 text-slate-400 border border-transparent glass-perf',
-          )}
-        >
-          <PieChart className="w-4 h-4" /> Статы
-        </button>
+        <SubTabButton
+          active={subTab === 'today'}
+          onClick={() => setSubTab('today')}
+          icon={<Activity className="w-4 h-4" />}
+          label="Сегодня"
+          accent="cyan"
+        />
+        <SubTabButton
+          active={subTab === 'plan'}
+          onClick={() => setSubTab('plan')}
+          icon={<Wrench className="w-4 h-4" />}
+          label="План"
+          accent="purple"
+        />
+        <SubTabButton
+          active={subTab === 'progress'}
+          onClick={() => setSubTab('progress')}
+          icon={<PieChart className="w-4 h-4" />}
+          label="Прогресс"
+          accent="magenta"
+        />
       </div>
 
-      {/* Sub-tab Content */}
       <div className="px-2">
-        {activeSubTab === 'tracker' && <WorkoutTracker />}
-        {activeSubTab === 'constructor' && <WorkoutConstructor />}
-        {activeSubTab === 'stats' && (
+        {subTab === 'today' && <WorkoutTracker onGoToPlan={() => setSubTab('plan')} />}
+        {subTab === 'plan' && <WorkoutConstructor />}
+        {subTab === 'progress' && (
           <Suspense
             fallback={
               <div className="flex flex-col items-center justify-center py-16">
@@ -251,5 +230,35 @@ export function FitnessTab() {
         )}
       </div>
     </div>
+  );
+}
+
+function SubTabButton({
+  active, onClick, icon, label, accent,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  accent: 'cyan' | 'purple' | 'magenta';
+}) {
+  const accentClass =
+    accent === 'cyan'
+      ? 'border-cyan-500/30 text-cyan-300'
+      : accent === 'purple'
+        ? 'border-purple-500/30 text-purple-300'
+        : 'border-magenta-500/30 text-magenta-300';
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'active:scale-95 flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all text-sm',
+        active
+          ? `bg-slate-800 border ${accentClass} shadow-[0_4px_10px_rgba(0,0,0,0.5)]`
+          : 'bg-slate-900/50 text-slate-400 border border-transparent glass-perf',
+      )}
+    >
+      {icon} {label}
+    </button>
   );
 }

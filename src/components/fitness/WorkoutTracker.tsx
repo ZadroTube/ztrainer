@@ -259,7 +259,7 @@ function formatDurationSeconds(totalSeconds: number) {
   return `${minutes}м ${seconds}с`;
 }
 
-export function WorkoutTracker() {
+export function WorkoutTracker({ onGoToPlan }: { onGoToPlan?: () => void } = {}) {
   const { selectedDate, viewMode } = useUIContext();
   const { plannedWorkouts, completedSets, dailyDurations, finishWorkout } = useWorkoutData();
   const { workoutStartTime, workoutAccumulatedMs } = useTimerContext();
@@ -333,8 +333,16 @@ export function WorkoutTracker() {
         </div>
         <h3 className="text-lg font-bold text-slate-300">План пуст</h3>
         <p className="text-slate-500 text-sm max-w-[260px]">
-          На этот день нет тренировок. Перейди во вкладку «Билдер», чтобы составить план.
+          На этот день нет тренировок. Добавь упражнения — и вперёд.
         </p>
+        {onGoToPlan && (
+          <button
+            onClick={onGoToPlan}
+            className="active:scale-95 mt-2 px-5 py-2.5 bg-purple-500/15 border border-purple-500/40 text-purple-200 hover:bg-purple-500/25 rounded-xl font-medium text-sm transition-all"
+          >
+            Составить план
+          </button>
+        )}
       </div>
     );
   }
@@ -367,6 +375,15 @@ export function WorkoutTracker() {
             className="active:scale-95 mt-2 px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold shadow-[0_0_15px_rgba(6,182,212,0.4)] flex items-center gap-2 transition-all"
           >
             <StopCircle className="w-5 h-5" /> Завершить тренировку
+          </button>
+        )}
+
+        {viewMode === 'diary' && onGoToPlan && (
+          <button
+            onClick={onGoToPlan}
+            className="active:scale-95 mt-2 px-5 py-2.5 bg-purple-500/15 border border-purple-500/40 text-purple-200 hover:bg-purple-500/25 rounded-xl font-medium text-sm transition-all"
+          >
+            Открыть план
           </button>
         )}
       </div>
