@@ -16,7 +16,7 @@ export function NewsModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 animate-in fade-in duration-200" onClick={onClose}>
       <div
-        className="w-full max-w-md glass rounded-t-3xl sm:rounded-3xl border border-cyan-500/30 max-h-[90vh] overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
+        className="w-full max-w-md glass rounded-t-3xl sm:rounded-3xl border border-cyan-500/30 modal-sheet-tall overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between px-5 py-4 border-b border-slate-700/50">
@@ -64,7 +64,7 @@ function ModeTab({
         'active:scale-95 flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium transition-all',
         active
           ? 'bg-slate-800 border border-cyan-500/30 text-cyan-300 shadow-[0_4px_10px_rgba(0,0,0,0.5)]'
-          : 'bg-slate-900/50 text-slate-400 border border-transparent glass'
+          : 'bg-slate-900/50 text-slate-400 border border-transparent glass-solid'
       )}
     >
       {icon}
@@ -80,7 +80,7 @@ function NewsCard({ item }: { item: NewsItem }) {
       href={item.link}
       target="_blank"
       rel="noopener noreferrer"
-      className="active:scale-[0.99] glass rounded-xl border border-slate-700/40 hover:border-cyan-400/40 px-4 py-3 block transition-all"
+      className="active:scale-[0.99] glass-solid rounded-xl border border-slate-700/40 hover:border-cyan-400/40 px-4 py-3 block transition-all"
     >
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">

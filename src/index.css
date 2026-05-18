@@ -53,6 +53,48 @@
   }
 
   /*
+   * Solid surface for content nested INSIDE a `.glass` parent (modals).
+   * iOS Safari/WKWebView misrenders nested `backdrop-filter` — the inner
+   * blur picks up the modal overlay tint instead of the parent, leaving
+   * the child essentially black/borderless. Use `.glass-solid` for
+   * buttons, cards, and rows that live inside a glass modal.
+   */
+  .glass-solid {
+    background: rgba(30, 41, 59, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /*
+   * Bottom-sheet modal body. Centralises the iOS-specific fixes:
+   *   - `dvh` for dynamic viewport height (iOS 15.4+) — falls back to vh
+   *     on older browsers via @supports below.
+   *   - `safe-area-inset-bottom` so the home indicator on iPhone X+
+   *     doesn't cover the last button. Only applied on touch devices.
+   */
+  .modal-sheet {
+    max-height: 85vh;
+  }
+  @supports (max-height: 85dvh) {
+    .modal-sheet {
+      max-height: 85dvh;
+    }
+  }
+  .modal-sheet-tall {
+    max-height: 90vh;
+  }
+  @supports (max-height: 90dvh) {
+    .modal-sheet-tall {
+      max-height: 90dvh;
+    }
+  }
+  @media (hover: none) and (pointer: coarse) {
+    .modal-sheet,
+    .modal-sheet-tall {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+  }
+
+  /*
    * Decorative ambient glows. They never change and live behind everything,
    * so we hint the browser to put them on their own GPU layer once and not
    * re-paint when the foreground scrolls.

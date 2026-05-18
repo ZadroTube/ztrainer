@@ -96,7 +96,7 @@ export function AddMovieModal({ onClose, defaultStatus = STATUS_WATCHLIST, onAdd
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 animate-in fade-in duration-200" onClick={onClose}>
       <div
-        className="w-full max-w-md glass rounded-t-3xl sm:rounded-3xl border border-magenta-500/30 max-h-[85vh] overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
+        className="w-full max-w-md glass rounded-t-3xl sm:rounded-3xl border border-magenta-500/30 modal-sheet overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between px-5 py-4 border-b border-slate-700/50">
@@ -142,7 +142,7 @@ export function AddMovieModal({ onClose, defaultStatus = STATUS_WATCHLIST, onAdd
             const saved = savedIds.has(movie.tmdb_id);
             const saving = savingId === movie.tmdb_id;
             return (
-              <div key={movie.tmdb_id} className="glass rounded-xl border border-slate-700/40 overflow-hidden flex">
+              <div key={movie.tmdb_id} className="glass-solid rounded-xl border border-slate-700/40 overflow-hidden flex">
                 <div className="w-16 h-24 flex-shrink-0 bg-slate-900/60 flex items-center justify-center overflow-hidden">
                   {movie.poster_url ? (
                     <img src={movie.poster_url} alt="" className="w-full h-full object-cover" />

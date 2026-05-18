@@ -89,7 +89,7 @@ export function GuessGameModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 animate-in fade-in duration-200" onClick={onClose}>
       <div
-        className="w-full max-w-md glass rounded-t-3xl sm:rounded-3xl border border-purple-500/30 max-h-[90vh] overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
+        className="w-full max-w-md glass rounded-t-3xl sm:rounded-3xl border border-purple-500/30 modal-sheet-tall overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between px-5 py-4 border-b border-slate-700/50">
@@ -124,7 +124,7 @@ export function GuessGameModal({ onClose }: { onClose: () => void }) {
 
           {(phase === 'playing' || phase === 'won' || phase === 'revealed') && riddle && (
             <>
-              <div className="glass rounded-xl border border-slate-700/40 px-4 py-3 text-sm text-slate-200 whitespace-pre-line leading-relaxed">
+              <div className="glass-solid rounded-xl border border-slate-700/40 px-4 py-3 text-sm text-slate-200 whitespace-pre-line leading-relaxed">
                 {riddle.riddle}
               </div>
 

@@ -25,7 +25,7 @@ export function MovieDetailsModal({ movie, onClose, onMarkWatched, onRate, onDel
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 animate-in fade-in duration-200" onClick={onClose}>
       <div
-        className="w-full max-w-md glass rounded-t-3xl sm:rounded-3xl border border-magenta-500/30 max-h-[90vh] overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
+        className="w-full max-w-md glass rounded-t-3xl sm:rounded-3xl border border-magenta-500/30 modal-sheet-tall overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Hero — poster as backdrop with gradient overlay */}
@@ -121,13 +121,13 @@ export function MovieDetailsModal({ movie, onClose, onMarkWatched, onRate, onDel
           {isWatched && (movie.husband_rating || movie.wife_rating) && (
             <div className="mt-4 grid grid-cols-2 gap-2">
               {movie.husband_rating && (
-                <div className="glass rounded-xl border border-cyan-500/25 px-3 py-2">
+                <div className="glass-solid rounded-xl border border-cyan-500/25 px-3 py-2">
                   <div className="text-[10px] uppercase tracking-widest text-cyan-300/80 font-bold">👨 Муж</div>
                   <div className="text-sm font-bold text-white mt-0.5">{movie.husband_rating}</div>
                 </div>
               )}
               {movie.wife_rating && (
-                <div className="glass rounded-xl border border-magenta-500/25 px-3 py-2">
+                <div className="glass-solid rounded-xl border border-magenta-500/25 px-3 py-2">
                   <div className="text-[10px] uppercase tracking-widest text-magenta-300/80 font-bold">👩 Жена</div>
                   <div className="text-sm font-bold text-white mt-0.5">{movie.wife_rating}</div>
                 </div>

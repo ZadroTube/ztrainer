@@ -58,7 +58,7 @@ export function HoroscopeModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 animate-in fade-in duration-200" onClick={onClose}>
       <div
-        className="w-full max-w-md glass rounded-t-3xl sm:rounded-3xl border border-purple-500/30 max-h-[85vh] overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
+        className="w-full max-w-md glass rounded-t-3xl sm:rounded-3xl border border-purple-500/30 modal-sheet overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between px-5 py-4 border-b border-slate-700/50">
@@ -90,7 +90,7 @@ export function HoroscopeModal({ onClose }: { onClose: () => void }) {
                     key={z.id}
                     onClick={() => handlePickZodiac(z.id)}
                     disabled={savingZodiac}
-                    className="active:scale-95 glass rounded-xl border border-slate-700/50 hover:border-purple-400/60 px-2 py-3 flex flex-col items-center gap-1 transition-all disabled:opacity-50"
+                    className="active:scale-95 glass-solid rounded-xl border border-slate-700/50 hover:border-purple-400/60 px-2 py-3 flex flex-col items-center gap-1 transition-all disabled:opacity-50"
                   >
                     <span className="text-2xl leading-none">{z.emoji}</span>
                     <span className="text-[11px] text-slate-300">{z.ru}</span>

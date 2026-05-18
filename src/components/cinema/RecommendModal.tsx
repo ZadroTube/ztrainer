@@ -102,7 +102,7 @@ export function RecommendModal({ onClose, onAdded }: RecommendModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 animate-in fade-in duration-200" onClick={onClose}>
       <div
-        className="w-full max-w-md glass rounded-t-3xl sm:rounded-3xl border border-purple-500/30 max-h-[85vh] overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
+        className="w-full max-w-md glass rounded-t-3xl sm:rounded-3xl border border-purple-500/30 modal-sheet overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between px-5 py-4 border-b border-slate-700/50">
@@ -133,7 +133,7 @@ export function RecommendModal({ onClose, onAdded }: RecommendModalProps) {
                   <button
                     key={m.id}
                     onClick={() => handleMood(m.id)}
-                    className="active:scale-95 glass rounded-xl border border-slate-700/50 hover:border-purple-400/60 px-3 py-3 flex items-center gap-2 transition-all"
+                    className="active:scale-95 glass-solid rounded-xl border border-slate-700/50 hover:border-purple-400/60 px-3 py-3 flex items-center gap-2 transition-all"
                   >
                     <span className="text-2xl">{m.emoji}</span>
                     <span className="text-sm font-medium text-white">{m.label}</span>
@@ -143,7 +143,7 @@ export function RecommendModal({ onClose, onAdded }: RecommendModalProps) {
               <button
                 onClick={fetchSurprise}
                 disabled={loading}
-                className="w-full mt-3 active:scale-95 glass rounded-xl border border-cyan-500/30 hover:border-cyan-400/60 px-3 py-3 flex items-center gap-2 justify-center text-sm font-bold text-cyan-200 transition-all disabled:opacity-50"
+                className="w-full mt-3 active:scale-95 glass-solid rounded-xl border border-cyan-500/30 hover:border-cyan-400/60 px-3 py-3 flex items-center gap-2 justify-center text-sm font-bold text-cyan-200 transition-all disabled:opacity-50"
               >
                 <Dice5 className="w-4 h-4" />
                 {loading ? 'Бросаю кубик…' : 'Сюрприз'}
@@ -158,7 +158,7 @@ export function RecommendModal({ onClose, onAdded }: RecommendModalProps) {
                 <button
                   onClick={() => fetchRecs(true)}
                   disabled={loading}
-                  className="active:scale-95 glass rounded-xl border border-slate-700/50 hover:border-purple-400/60 px-4 py-4 text-left transition-all disabled:opacity-50"
+                  className="active:scale-95 glass-solid rounded-xl border border-slate-700/50 hover:border-purple-400/60 px-4 py-4 text-left transition-all disabled:opacity-50"
                 >
                   <div className="text-sm font-bold text-white">⚡ Покороче</div>
                   <div className="text-[11px] text-slate-400 mt-0.5">До 1.5 часов</div>
@@ -166,7 +166,7 @@ export function RecommendModal({ onClose, onAdded }: RecommendModalProps) {
                 <button
                   onClick={() => fetchRecs(false)}
                   disabled={loading}
-                  className="active:scale-95 glass rounded-xl border border-slate-700/50 hover:border-purple-400/60 px-4 py-4 text-left transition-all disabled:opacity-50"
+                  className="active:scale-95 glass-solid rounded-xl border border-slate-700/50 hover:border-purple-400/60 px-4 py-4 text-left transition-all disabled:opacity-50"
                 >
                   <div className="text-sm font-bold text-white">🕐 Любая длина</div>
                   <div className="text-[11px] text-slate-400 mt-0.5">Подбираю по полной</div>
@@ -190,7 +190,7 @@ export function RecommendModal({ onClose, onAdded }: RecommendModalProps) {
                   const saved = savedIds.has(movie.tmdb_id);
                   const saving = savingId === movie.tmdb_id;
                   return (
-                    <div key={movie.tmdb_id} className="glass rounded-xl border border-slate-700/40 overflow-hidden">
+                    <div key={movie.tmdb_id} className="glass-solid rounded-xl border border-slate-700/40 overflow-hidden">
                       <div className="flex">
                         <div className="w-24 h-32 flex-shrink-0 bg-slate-900/60 flex items-center justify-center overflow-hidden">
                           {movie.poster_url ? (
