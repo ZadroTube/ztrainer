@@ -8,6 +8,7 @@ import { TarotModal } from '@/components/hub/TarotModal';
 import { HoroscopeModal } from '@/components/hub/HoroscopeModal';
 import { ImageGenModal } from '@/components/hub/ImageGenModal';
 import { NewsModal } from '@/components/hub/NewsModal';
+import { WebSearchToggle } from '@/components/hub/WebSearchToggle';
 import { HelpCircle, X, Sparkles, Stars, Smile, Brush, Loader2, Check, Newspaper } from 'lucide-react';
 
 type ModalKind = 'about' | 'tarot' | 'horoscope' | 'image' | 'news' | null;
@@ -48,6 +49,11 @@ export function HomeTab() {
       {/* Today summary */}
       <section className="mx-2 mt-3">
         <TodaySummary />
+      </section>
+
+      {/* Web search toggle */}
+      <section className="mx-2 mt-3">
+        <WebSearchToggle />
       </section>
 
       {/* Quick action tiles */}

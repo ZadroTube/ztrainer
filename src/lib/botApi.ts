@@ -42,7 +42,7 @@ export class BotApiError extends Error {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PATCH';
   body?: unknown;
   /** Abort signal so callers can cancel inflight requests. */
   signal?: AbortSignal;
@@ -335,4 +335,27 @@ export function clearProfile(signal?: AbortSignal): Promise<{ ok: boolean }> {
 
 export function fetchMeSummary(signal?: AbortSignal): Promise<{ text: string }> {
   return request('/api/me/summary', { signal });
+}
+
+// ---------------------------------------------------------------------------
+// User preferences (per-user Hub toggles)
+// ---------------------------------------------------------------------------
+
+export interface UserPreferences {
+  web_search_enabled: boolean;
+}
+
+export function fetchPreferences(signal?: AbortSignal): Promise<UserPreferences> {
+  return request<UserPreferences>('/api/preferences', { signal });
+}
+
+export function updatePreferences(
+  patch: Partial<UserPreferences>,
+  signal?: AbortSignal,
+): Promise<UserPreferences> {
+  return request<UserPreferences>('/api/preferences', {
+    method: 'PATCH',
+    body: patch,
+    signal,
+  });
 }
