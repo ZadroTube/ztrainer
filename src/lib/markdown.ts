@@ -62,6 +62,28 @@ export function renderMarkdown(src: string): string {
 }
 
 /**
+ * Render Telegram legacy Markdown the way the Telegram client will show it.
+ *
+ * Telegram bold uses *one* asterisk (`*bold*`), while standard markdown
+ * treats single `*` as italic. We convert Telegram-style → standard before
+ * handing off to `renderMarkdown`, so the preview matches what users see.
+ */
+export function renderTelegramPreview(src: string): string {
+  if (!src) return '';
+  // Protect code spans from transformation.
+  const codePat = /```[\s\S]*?```|`[^`\n]*`/g;
+  const stash: string[] = [];
+  const protectedSrc = src.replace(codePat, (m) => {
+    stash.push(m);
+    return `\x00${stash.length - 1}\x00`;
+  });
+  // Telegram `*bold*` → standard `**bold**` so marked renders it as <strong>.
+  const converted = protectedSrc.replace(/\*([^*\n]+?)\*/g, '**$1**');
+  const restored = converted.replace(/\x00(\d+)\x00/g, (_, i) => stash[Number(i)]);
+  return renderMarkdown(restored);
+}
+
+/**
  * Plain-text preview for the announcement card. Strips markdown markers
  * and code blocks so the line truncation looks clean.
  */

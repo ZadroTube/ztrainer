@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Send, Eye, Loader2, HelpCircle, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { broadcastPreview, broadcastSend, BotApiError } from '@/lib/botApi';
+import { renderTelegramPreview } from '@/lib/markdown';
 
 const DEFAULT_TEMPLATE = `Привет, {name}! Спешу рассказать о том, что у меня нового и полезного для тебя...
 
@@ -101,8 +102,15 @@ export function BroadcastModal({ onClose }: BroadcastModalProps) {
               <div className="text-xs text-slate-400">
                 Превью (как увидишь ты). Получателей: <span className="text-cyan-300 font-bold">{totalUsers}</span>
               </div>
-              <div className="glass-solid rounded-xl border border-slate-700/60 p-4 text-sm text-slate-200 whitespace-pre-line">
-                {previewText || <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />}
+              <div className="glass-solid rounded-xl border border-slate-700/60 p-4 text-sm text-slate-200">
+                {previewText ? (
+                  <div
+                    className="prose-announcement"
+                    dangerouslySetInnerHTML={{ __html: renderTelegramPreview(previewText) }}
+                  />
+                ) : (
+                  <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+                )}
               </div>
               <div className="text-[10px] text-slate-500">
                 Подстановка <code className="text-cyan-300">{'{name}'}</code> заменится на имя каждого получателя.
