@@ -3,6 +3,7 @@ import { useUIContext, useWorkoutData } from '@/context/AppContext';
 import { supabase } from '@/lib/supabase';
 import { LogOut, Trash2, User, Brain, ChevronRight, Stars } from 'lucide-react';
 import { SectionHeader } from '@/components/layout/SectionHeader';
+import { HelpButton } from '@/components/layout/HelpButton';
 import { AIProfileModal } from '@/components/profile/AIProfileModal';
 import { HoroscopeModal } from '@/components/hub/HoroscopeModal';
 import { fetchMeProfile } from '@/lib/botApi';
@@ -21,6 +22,33 @@ const ZODIAC_RU: Record<string, string> = {
   aquarius: '♒ Водолей',
   pisces: '♓ Рыбы',
 };
+
+const PROFILE_HELP = `# 👤 Раздел «Мой профиль»
+
+Здесь собрана информация о тебе и настройки.
+
+## Что здесь есть
+
+- **Аватар и имя** — берутся из твоего Telegram-аккаунта.
+- **Знак зодиака** — нужен для ежедневного гороскопа в утреннем сообщении. Можно изменить.
+
+## ИИ-досье
+
+Бот запоминает факты о тебе из переписки (вкусы, привычки, здоровье). Нажми *«Что бот знает обо мне»* чтобы увидеть, что он запомнил.
+
+- Можно **добавить факт** вручную.
+- Можно **очистить досье** если хочешь начать с чистого листа.
+
+## Сводка диалогов
+
+ИИ ведёт краткий дневник ваших бесед. Нажми *«Сводка»* чтобы увидеть, о чём вы общались.
+
+## Выход
+
+Кнопка *«Выйти»* разлогинивает из мини-приложения. Данные не удаляются — при следующем входе всё будет на месте.
+
+> Все данные хранятся безопасно и доступны только тебе.
+`;
 
 export function ProfileTab() {
   const { userProfile } = useUIContext();
@@ -67,7 +95,9 @@ export function ProfileTab() {
 
   return (
     <div className="flex flex-col pb-24 animate-in fade-in duration-300">
-      <SectionHeader brand="ZProfile" title="Мой профиль" />
+      <SectionHeader brand="ZProfile" title="Мой профиль" rightSlot={
+        <HelpButton brand="ZProfile" accent="purple" content={PROFILE_HELP} />
+      } />
 
       <div className="flex flex-col items-center pt-4 px-4">
         {/* Avatar */}

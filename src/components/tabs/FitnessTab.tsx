@@ -10,10 +10,42 @@ import {
 import { WorkoutTracker } from '@/components/fitness/WorkoutTracker';
 import { WorkoutConstructor } from '@/components/fitness/WorkoutConstructor';
 import { SectionHeader } from '@/components/layout/SectionHeader';
+import { HelpButton } from '@/components/layout/HelpButton';
 
 const FitnessStats = lazy(() =>
   import('@/components/fitness/FitnessStats').then((m) => ({ default: m.FitnessStats })),
 );
+
+const FITNESS_HELP = `# 💪 Раздел «Тренировки»
+
+Здесь ты планируешь и отслеживаешь свои тренировки.
+
+## Как устроено
+
+- **Календарь** вверху — листай дни стрелками. Точки под датами показывают, где есть план.
+- **Три вкладки**: Сегодня · План · Прогресс.
+
+## Сегодня
+
+Показывает упражнения на выбранный день. Нажимай на подход (сет), чтобы отметить его выполненным. Когда все подходы сделаны — упражнение закрашивается.
+
+## План
+
+Здесь ты собираешь тренировку:
+- Нажми **+** чтобы добавить упражнение из базы.
+- Задай количество подходов и повторений.
+- Упражнения можно удалять свайпом или через меню.
+
+## Прогресс
+
+Графики и статистика: объём за неделю, частота тренировок, рекорды.
+
+## Таймер
+
+Вверху справа — таймер тренировки. Запускается автоматически при первом отмеченном подходе. Можно поставить на паузу или сбросить.
+
+> Данные синхронизируются между устройствами в реальном времени.
+`;
 
 /**
  * Header pill: live workout timer with pause/reset.
@@ -184,7 +216,12 @@ export function FitnessTab() {
 
   return (
     <div className="flex flex-col space-y-3 pb-24">
-      <SectionHeader brand="ZTrainer" title="Тренировки" rightSlot={<HeaderControls />} />
+      <SectionHeader brand="ZTrainer" title="Тренировки" rightSlot={
+        <div className="flex items-center gap-2">
+          <HeaderControls />
+          <HelpButton brand="ZTrainer" accent="cyan" content={FITNESS_HELP} />
+        </div>
+      } />
 
       <CalendarStrip />
 

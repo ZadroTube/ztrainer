@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Film, Plus, Sparkles, Calendar, Star, Gamepad2 } from 'lucide-react';
 import { SectionHeader } from '@/components/layout/SectionHeader';
+import { HelpButton } from '@/components/layout/HelpButton';
 import { MovieCard } from '@/components/cinema/MovieCard';
 import { AddMovieModal } from '@/components/cinema/AddMovieModal';
 import { RecommendModal } from '@/components/cinema/RecommendModal';
@@ -21,6 +22,34 @@ import { cinemaPremieres, BotApiError, type PremiereMovie } from '@/lib/botApi';
 import { cn } from '@/lib/utils';
 
 type SubTab = 'watchlist' | 'watched' | 'premieres';
+
+const CINEMA_HELP = `# 🎬 Раздел «Кино»
+
+Семейная кинотека — планируйте, что посмотреть, и ведите историю просмотров.
+
+## Вкладки
+
+- **Хочу посмотреть** — список фильмов, которые вы добавили на будущее.
+- **Просмотренные** — фильмы, которые уже посмотрели (с оценками).
+- **Премьеры** — ближайшие новинки из кинотеатров.
+
+## Как добавить фильм
+
+Нажми кнопку **+ Добавить** вверху. Введи название — бот найдёт фильм в базе TMDB и добавит с постером и описанием.
+
+## ИИ-рекомендации
+
+Нажми **✨ Подобрать** — ИИ спросит настроение и подберёт фильмы специально для тебя.
+
+## Что ещё можно
+
+- **Нажми на фильм** — откроется карточка с описанием, трейлером и кнопками.
+- **Объяснение сюжета** — ИИ расскажет о чём фильм (без спойлеров или с ними — на выбор).
+- **Игра «Угадай фильм»** 🎮 — ИИ загадывает фильм по описанию, ты угадываешь.
+- **Оценки** — после просмотра можно поставить оценку от каждого члена семьи.
+
+> Все фильмы синхронизируются между устройствами.
+`;
 
 export function CinemaTab() {
   const [subTab, setSubTab] = useState<SubTab>('watchlist');
@@ -80,7 +109,9 @@ export function CinemaTab() {
 
   return (
     <div className="flex flex-col pb-24 animate-in fade-in duration-300">
-      <SectionHeader brand="CinemaZ" title="Кино" />
+      <SectionHeader brand="CinemaZ" title="Кино" rightSlot={
+        <HelpButton brand="CinemaZ" accent="magenta" content={CINEMA_HELP} />
+      } />
 
       {/* Primary action bar — clear labels, full-width buttons. */}
       <div className="mx-2 mt-2 grid grid-cols-3 gap-2">
