@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Megaphone, MoreVertical, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Megaphone, MoreVertical, Plus, Pencil, Trash2, Send } from 'lucide-react';
 import {
   type Announcement,
   fetchActiveAnnouncement,
@@ -8,11 +8,12 @@ import {
   deleteAnnouncement,
   BotApiError,
 } from '@/lib/botApi';
+import { BroadcastModal } from './BroadcastModal';
 import { plainPreview } from '@/lib/markdown';
 import { timeAgo } from '@/lib/utils';
 import { AnnouncementModal } from './AnnouncementModal';
 
-type Mode = 'idle' | 'view' | 'compose' | 'edit';
+type Mode = 'idle' | 'view' | 'compose' | 'edit' | 'broadcast';
 
 /**
  * "Что нового" card on the Home tab.
@@ -99,18 +100,32 @@ export function AnnouncementCard() {
   if (!announcement && isAdmin) {
     return (
       <>
-        <button
-          onClick={() => setMode('compose')}
-          className="w-full glass rounded-2xl border border-cyan-500/25 hover:border-cyan-400/50 px-4 py-3 flex items-center gap-3 active:scale-[0.99] transition-all text-left"
-        >
-          <div className="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center flex-shrink-0">
-            <Plus className="w-5 h-5 text-cyan-300" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-bold text-white">Добавить объявление</div>
-            <div className="text-[11px] text-slate-400 mt-0.5">Карточка «Что нового» на главной</div>
-          </div>
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setMode('compose')}
+            className="flex-1 glass rounded-2xl border border-cyan-500/25 hover:border-cyan-400/50 px-4 py-3 flex items-center gap-3 active:scale-[0.99] transition-all text-left"
+          >
+            <div className="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center flex-shrink-0">
+              <Plus className="w-5 h-5 text-cyan-300" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold text-white">Объявление</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Что нового</div>
+            </div>
+          </button>
+          <button
+            onClick={() => setMode('broadcast')}
+            className="glass rounded-2xl border border-purple-500/25 hover:border-purple-400/50 px-4 py-3 flex items-center gap-3 active:scale-[0.99] transition-all text-left"
+          >
+            <div className="w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center flex-shrink-0">
+              <Send className="w-5 h-5 text-purple-300" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-bold text-white">Рассылка</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Всем в чат</div>
+            </div>
+          </button>
+        </div>
 
         {mode === 'compose' && (
           <AnnouncementModal
@@ -118,6 +133,9 @@ export function AnnouncementCard() {
             onClose={() => setMode('idle')}
             onSave={handleSave}
           />
+        )}
+        {mode === 'broadcast' && (
+          <BroadcastModal onClose={() => setMode('idle')} />
         )}
       </>
     );
@@ -192,6 +210,16 @@ export function AnnouncementCard() {
                   <Trash2 className="w-4 h-4" />
                   Удалить
                 </button>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setMode('broadcast');
+                  }}
+                  className="w-full px-3 py-2.5 flex items-center gap-2 text-sm text-purple-300 hover:bg-purple-500/15 transition-colors text-left border-t border-slate-700/60"
+                >
+                  <Send className="w-4 h-4" />
+                  Разослать всем
+                </button>
               </div>
             )}
           </div>
@@ -223,6 +251,9 @@ export function AnnouncementCard() {
           onClose={() => setMode('idle')}
           onSave={handleSave}
         />
+      )}
+      {mode === 'broadcast' && (
+        <BroadcastModal onClose={() => setMode('idle')} />
       )}
     </>
   );

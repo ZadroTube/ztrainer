@@ -400,3 +400,28 @@ export function updateAnnouncement(
 export function deleteAnnouncement(id: number, signal?: AbortSignal): Promise<{ ok: boolean }> {
   return request(`/api/announcements/${id}`, { method: 'DELETE', signal });
 }
+
+
+// ---------------------------------------------------------------------------
+// Broadcast (admin-only: send message to all bot users via Telegram)
+// ---------------------------------------------------------------------------
+
+export interface BroadcastResult {
+  sent: number;
+  failed: number;
+  total: number;
+  errors: { user_id: number; error: string }[];
+}
+
+export interface BroadcastPreview {
+  preview: string;
+  total_users: number;
+}
+
+export function broadcastPreview(text: string, signal?: AbortSignal): Promise<BroadcastPreview> {
+  return request<BroadcastPreview>('/api/broadcast/preview', { method: 'POST', body: { text }, signal });
+}
+
+export function broadcastSend(text: string, signal?: AbortSignal): Promise<BroadcastResult> {
+  return request<BroadcastResult>('/api/broadcast', { method: 'POST', body: { text }, signal });
+}
