@@ -15,6 +15,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.546.0",
+    "marked": "^15.0.12",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "recharts": "^2.15.1",

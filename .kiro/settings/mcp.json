@@ -18,13 +18,16 @@
         "execute_sql",
         "list_migrations",
         "get_project_url",
-        "get_anon_key"
+        "get_anon_key",
+        "apply_migration"
       ]
     },
-
     "github": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
       },
@@ -37,26 +40,41 @@
         "get_file_contents"
       ]
     },
-
     "context7": {
       "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"],
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ],
       "disabled": false,
-      "autoApprove": ["resolve-library-id", "get-library-docs"]
+      "autoApprove": [
+        "resolve-library-id",
+        "get-library-docs"
+      ]
     },
-
     "repomix": {
       "command": "npx",
-      "args": ["-y", "repomix", "--mcp"],
+      "args": [
+        "-y",
+        "repomix",
+        "--mcp"
+      ],
       "disabled": false,
-      "autoApprove": ["pack_codebase", "pack_remote_repository"]
+      "autoApprove": [
+        "pack_codebase",
+        "pack_remote_repository"
+      ]
     },
-
     "grep": {
       "command": "npx",
-      "args": ["-y", "grep-mcp"],
+      "args": [
+        "-y",
+        "grep-mcp"
+      ],
       "disabled": false,
-      "autoApprove": ["grep_search"]
+      "autoApprove": [
+        "grep_search"
+      ]
     }
   }
 }

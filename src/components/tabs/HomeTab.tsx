@@ -9,6 +9,7 @@ import { HoroscopeModal } from '@/components/hub/HoroscopeModal';
 import { ImageGenModal } from '@/components/hub/ImageGenModal';
 import { NewsModal } from '@/components/hub/NewsModal';
 import { WebSearchToggle } from '@/components/hub/WebSearchToggle';
+import { AnnouncementCard } from '@/components/hub/AnnouncementCard';
 import { HelpCircle, X, Sparkles, Stars, Smile, Brush, Loader2, Check, Newspaper } from 'lucide-react';
 
 type ModalKind = 'about' | 'tarot' | 'horoscope' | 'image' | 'news' | null;
@@ -44,6 +45,11 @@ export function HomeTab() {
       {/* Weather widget */}
       <section className="mx-2 mt-2">
         <WeatherWidget />
+      </section>
+
+      {/* "Что нового" — admin-managed announcement */}
+      <section className="mx-2 mt-3">
+        <AnnouncementCard />
       </section>
 
       {/* Today summary */}

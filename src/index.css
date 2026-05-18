@@ -152,3 +152,78 @@
     display: none;
   }
 }
+
+
+/*
+ * Styles for the rendered HTML coming out of `renderMarkdown` (announcements
+ * modal). Tailwind's `@tailwindcss/typography` plugin would be the standard
+ * choice, but it's another dependency for one screen — handcrafted is fine.
+ */
+@layer components {
+  .prose-announcement {
+    color: rgb(226 232 240); /* slate-200 */
+    line-height: 1.55;
+  }
+  .prose-announcement h1,
+  .prose-announcement h2,
+  .prose-announcement h3,
+  .prose-announcement h4 {
+    color: white;
+    font-weight: 700;
+    margin-top: 1em;
+    margin-bottom: 0.4em;
+  }
+  .prose-announcement h1 { font-size: 1.15rem; }
+  .prose-announcement h2 { font-size: 1.05rem; }
+  .prose-announcement h3 { font-size: 0.95rem; }
+  .prose-announcement h4 { font-size: 0.9rem; color: rgb(165 243 252); }
+  .prose-announcement p { margin: 0.5em 0; }
+  .prose-announcement strong { color: white; font-weight: 700; }
+  .prose-announcement em { color: rgb(196 181 253); /* purple-200 */ }
+  .prose-announcement a {
+    color: rgb(34 211 238); /* cyan-400 */
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .prose-announcement a:hover { color: rgb(165 243 252); }
+  .prose-announcement code {
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    font-size: 0.85em;
+    color: rgb(190 242 100); /* lime-300 */
+  }
+  .prose-announcement pre {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 0.75em 1em;
+    overflow-x: auto;
+    margin: 0.6em 0;
+  }
+  .prose-announcement pre code {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: rgb(226 232 240);
+  }
+  .prose-announcement ul,
+  .prose-announcement ol { padding-left: 1.4em; margin: 0.5em 0; }
+  .prose-announcement ul { list-style: disc; }
+  .prose-announcement ol { list-style: decimal; }
+  .prose-announcement li { margin: 0.2em 0; }
+  .prose-announcement blockquote {
+    border-left: 3px solid rgb(34 211 238);
+    padding: 0.2em 0.9em;
+    color: rgb(203 213 225);
+    background: rgba(34, 211, 238, 0.06);
+    border-radius: 0 8px 8px 0;
+    margin: 0.6em 0;
+  }
+  .prose-announcement hr {
+    border: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 1em 0;
+  }
+}

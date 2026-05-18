@@ -42,7 +42,7 @@ export class BotApiError extends Error {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   /** Abort signal so callers can cancel inflight requests. */
   signal?: AbortSignal;
@@ -358,4 +358,45 @@ export function updatePreferences(
     body: patch,
     signal,
   });
+}
+
+
+// ---------------------------------------------------------------------------
+// Announcements ("What's new" cards on the Home tab, admin-managed)
+// ---------------------------------------------------------------------------
+
+export interface Announcement {
+  id: number;
+  title: string;
+  body: string;
+  created_at: string;  // ISO timestamp
+  updated_at: string;  // ISO timestamp
+}
+
+export interface ActiveAnnouncementResponse {
+  announcement: Announcement | null;
+  is_admin: boolean;
+}
+
+export function fetchActiveAnnouncement(signal?: AbortSignal): Promise<ActiveAnnouncementResponse> {
+  return request<ActiveAnnouncementResponse>('/api/announcements/active', { signal });
+}
+
+export function createAnnouncement(
+  data: { title: string; body: string },
+  signal?: AbortSignal,
+): Promise<{ announcement: Announcement }> {
+  return request('/api/announcements', { method: 'POST', body: data, signal });
+}
+
+export function updateAnnouncement(
+  id: number,
+  patch: Partial<{ title: string; body: string }>,
+  signal?: AbortSignal,
+): Promise<{ announcement: Announcement }> {
+  return request(`/api/announcements/${id}`, { method: 'PATCH', body: patch, signal });
+}
+
+export function deleteAnnouncement(id: number, signal?: AbortSignal): Promise<{ ok: boolean }> {
+  return request(`/api/announcements/${id}`, { method: 'DELETE', signal });
 }
