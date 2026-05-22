@@ -28,3 +28,4 @@ Thumbs.db
 
 # Logs
 *.log
+.kiro/settings/ztrainer_tg_bot.code-workspace
