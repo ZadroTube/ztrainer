@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { format, subDays, differenceInCalendarDays, parseISO } from 'date-fns';
 import { TabName, BaseExercise, WorkoutExercise, PlannedWorkoutsDict, CompletedSetsDict, UserStats } from '@/types';
 import { supabase, authViaTelegram } from '@/lib/supabase';
@@ -101,7 +101,15 @@ async function supaSafe<T>(promise: PromiseLike<T>, label: string, rollback?: ()
 }
 
 declare global {
-  interface Window { Telegram?: { WebApp?: { initData?: string } } }
+  interface Window {
+    Telegram?: {
+      WebApp?: {
+        initData?: string;
+        version?: string;
+        platform?: string;
+      };
+    };
+  }
 }
 
 // ===================== Context types =====================
@@ -645,19 +653,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [completedSets, dailyDurations]);
 
   // --- Timer logic ---
-  const startWorkoutTimer = () => {
+  const startWorkoutTimer = useCallback(() => {
     if (isWorkoutPaused) { setWorkoutStartTime(Date.now()); setIsWorkoutPaused(false); }
     else if (!workoutStartTime) { setWorkoutStartTime(Date.now()); setWorkoutAccumulatedMs(0); setIsWorkoutPaused(false); }
-  };
-  const pauseWorkoutTimer = () => {
+  }, [isWorkoutPaused, workoutStartTime]);
+
+  const pauseWorkoutTimer = useCallback(() => {
     if (workoutStartTime && !isWorkoutPaused) {
       setWorkoutAccumulatedMs(prev => prev + (Date.now() - workoutStartTime));
       setWorkoutStartTime(null); setIsWorkoutPaused(true);
     }
-  };
-  const resetWorkoutTimer = () => { setWorkoutStartTime(null); setWorkoutAccumulatedMs(0); setIsWorkoutPaused(false); };
+  }, [workoutStartTime, isWorkoutPaused]);
 
-  const recordRest = () => {
+  const resetWorkoutTimer = useCallback(() => { setWorkoutStartTime(null); setWorkoutAccumulatedMs(0); setIsWorkoutPaused(false); }, []);
+
+  const recordRest = useCallback(() => {
     if (restContext?.type === 'exercise' && restStartTime) {
       let p = restAccumulatedPause;
       if (isRestPaused && restPausedAt) p += Date.now() - restPausedAt;
@@ -667,31 +677,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActualExerciseRests(prev => ({ ...prev, [rk]: (prev[rk] ?? 0) + elapsed }));
       supaSafe(supabase.from('exercise_rests').insert({ workout_plan_id: restContext.workoutId, actual_rest_seconds: elapsed }), 'exercise_rests insert');
     }
-  };
+  }, [restContext, restStartTime, restAccumulatedPause, isRestPaused, restPausedAt, selectedDate]);
 
-  const startRestTimer = (durationSeconds: number, context: RestContext) => {
+  const startRestTimer = useCallback((durationSeconds: number, context: RestContext) => {
     recordRest();
     setRestTimerDuration(durationSeconds);
     setRestTimerEnd(Date.now() + durationSeconds * 1000);
     setRestContext(context);
     setIsRestPaused(false);
     setRestStartTime(Date.now()); setRestPausedAt(null); setRestAccumulatedPause(0);
-  };
-  const pauseRestTimer = () => {
+  }, [recordRest]);
+
+  const pauseRestTimer = useCallback(() => {
     if (restTimerEnd && !isRestPaused) { setRestRemainingAtPause(restTimerEnd - Date.now()); setIsRestPaused(true); setRestPausedAt(Date.now()); }
-  };
-  const resumeRestTimer = () => {
+  }, [restTimerEnd, isRestPaused]);
+
+  const resumeRestTimer = useCallback(() => {
     if (isRestPaused && restContext) {
       setRestTimerEnd(Date.now() + restRemainingAtPause); setIsRestPaused(false);
       if (restPausedAt) { setRestAccumulatedPause(prev => prev + (Date.now() - restPausedAt)); setRestPausedAt(null); }
     }
-  };
-  const clearRestTimer = () => {
+  }, [isRestPaused, restContext, restRemainingAtPause, restPausedAt]);
+
+  const clearRestTimer = useCallback(() => {
     recordRest();
     setRestTimerEnd(null); setRestTimerDuration(0); setRestContext(null); setIsRestPaused(false);
     setRestStartTime(null); setRestPausedAt(null); setRestAccumulatedPause(0);
-  };
-  const adjustRestTimer = (deltaSeconds: number) => {
+  }, [recordRest]);
+
+  const adjustRestTimer = useCallback((deltaSeconds: number) => {
     const dm = deltaSeconds * 1000;
     if (isRestPaused) {
       let nr = restRemainingAtPause + dm; if (nr < 0) nr = 0;
@@ -700,10 +714,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let ne = restTimerEnd + dm; if (ne < Date.now()) ne = Date.now();
       setRestTimerEnd(ne); setRestTimerDuration(prev => Math.max(prev, (ne - Date.now()) / 1000));
     }
-  };
+  }, [isRestPaused, restRemainingAtPause, restTimerEnd]);
 
   // --- CRUD with Supabase sync + rollback (always syncs) ---
-  const addExerciseToDb = (ex: Omit<BaseExercise, 'id'>) => {
+  const addExerciseToDb = useCallback((ex: Omit<BaseExercise, 'id'>) => {
     const n = { ...ex, id: crypto.randomUUID() };
     setExerciseDb(prev => [...prev, n]);
     supaSafe(
@@ -711,8 +725,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       'exercises insert',
       () => setExerciseDb(prev => prev.filter(e => e.id !== n.id)),
     );
-  };
-  const updateExerciseInDb = (id: string, ex: Omit<BaseExercise, 'id'>) => {
+  }, []);
+
+  const updateExerciseInDb = useCallback((id: string, ex: Omit<BaseExercise, 'id'>) => {
     setExerciseDb(prev => {
       const old = prev.find(e => e.id === id);
       const rollback = () => { if (old) setExerciseDb(p => p.map(e => e.id === id ? old : e)); };
@@ -723,8 +738,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
       return prev.map(e => e.id === id ? { ...ex, id } : e);
     });
-  };
-  const deleteExerciseFromDb = (id: string) => {
+  }, []);
+
+  const deleteExerciseFromDb = useCallback((id: string) => {
     // Soft-delete: mark as archived instead of hard-deleting, so that
     // workout_plans.exercise_id references and exercise history remain intact.
     setExerciseDb(prev => {
@@ -739,9 +755,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       return next;
     });
-  };
+  }, []);
 
-  const addExerciseToPlan = (dateStr: string, exercise: BaseExercise, sets: number, reps: number, rt?: number) => {
+  const addExerciseToPlan = useCallback((dateStr: string, exercise: BaseExercise, sets: number, reps: number, rt?: number) => {
     const wid = crypto.randomUUID();
     const weightKg = exercise.defaultWeightKg;
     const newItem = { ...exercise, workoutId: wid, sets, reps, restTimeSeconds: rt, weightKg };
@@ -757,9 +773,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     // Plan changed → exercise history caches are now stale.
     bumpHistoryCache();
-  };
+  }, []);
 
-  const updatePlanExercise = (dateStr: string, wid: string, updates: Partial<Pick<WorkoutExercise, 'sets' | 'reps' | 'restTimeSeconds' | 'weightKg'>>) => {
+  const updatePlanExercise = useCallback((dateStr: string, wid: string, updates: Partial<Pick<WorkoutExercise, 'sets' | 'reps' | 'restTimeSeconds' | 'weightKg'>>) => {
     setPlannedWorkouts(prev => ({
       ...prev,
       [dateStr]: (prev[dateStr] ?? []).map(ex => ex.workoutId === wid ? { ...ex, ...updates } : ex),
@@ -771,17 +787,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (updates.weightKg !== undefined) sbUpdates.weight_kg = updates.weightKg ?? null;
     supaSafe(supabase.from('workout_plans').update(sbUpdates).eq('id', wid), 'workout_plans update');
     bumpHistoryCache();
-  };
+  }, []);
 
-  const removeExerciseFromPlan = (dateStr: string, wid: string) => {
+  const removeExerciseFromPlan = useCallback((dateStr: string, wid: string) => {
     setPlannedWorkouts(prev => ({ ...prev, [dateStr]: (prev[dateStr] ?? []).filter(e => e.workoutId !== wid) }));
     setCompletedSets(prev => { const n = { ...prev }; for (const k of Object.keys(n)) { if (k.includes(wid)) delete n[k]; } return n; });
     supaSafe(supabase.from('workout_plans').delete().eq('id', wid), 'workout_plans delete');
     supaSafe(supabase.from('completed_sets').delete().eq('workout_plan_id', wid), 'completed_sets delete');
     bumpHistoryCache();
-  };
+  }, []);
 
-  const toggleSetCompletion = (dateStr: string, wid: string, si: number, done: boolean) => {
+  const toggleSetCompletion = useCallback((dateStr: string, wid: string, si: number, done: boolean) => {
     if (done && !workoutStartTime && !workoutAccumulatedMs) startWorkoutTimer();
     const key = `${dateStr}_${wid}_${si}`;
     if (!done) {
@@ -795,9 +811,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         () => setCompletedSets(prev => { const n = { ...prev }; delete n[key]; return n; }),
       );
     }
-  };
+  }, [workoutStartTime, workoutAccumulatedMs, startWorkoutTimer]);
 
-  const finishWorkout = () => {
+  const finishWorkout = useCallback(() => {
     const elapsedMs = workoutAccumulatedMs + (workoutStartTime && !isWorkoutPaused ? Date.now() - workoutStartTime : 0);
     const secs = Math.floor(elapsedMs / 1000);
     if (secs > 0) {
@@ -806,9 +822,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       supaSafe(supabase.from('workout_sessions').insert({ plan_date: ds, duration_seconds: secs }), 'workout_sessions insert');
     }
     resetWorkoutTimer(); clearRestTimer();
-  };
+  }, [workoutAccumulatedMs, workoutStartTime, isWorkoutPaused, selectedDate, resetWorkoutTimer, clearRestTimer]);
 
-  const resetUserStats = () => {
+  const resetUserStats = useCallback(() => {
     setDailyDurations({}); setCompletedSets({}); setActualExerciseRests({}); setPlannedWorkouts({});
     setUserStats({ totalWorkoutSeconds: 0, totalSets: 0, currentStreak: 0, achievements: {} });
     // PostgREST refuses unconditional DELETE/UPDATE for safety — we add a
@@ -822,27 +838,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Bump cache epoch so any out-of-tree caches (e.g. exercise history in
     // WorkoutConstructor) know to discard their entries.
     bumpHistoryCache();
-  };
+  }, []);
 
   // --- Context values ---
-  const uiValue: UIContextType = {
+  const uiValue = useMemo(() => ({
     loading, needsLogin, isTelegram, userProfile, loadError, syncError, handleWidgetAuth,
     activeTab, setActiveTab, selectedDate, setSelectedDate, viewMode, setViewMode,
-  };
+  }), [
+    loading, needsLogin, isTelegram, userProfile, loadError, syncError, handleWidgetAuth,
+    activeTab, selectedDate, viewMode,
+  ]);
 
-  const workoutDataValue: WorkoutDataContextType = {
+  const workoutDataValue = useMemo(() => ({
     exerciseDb, addExerciseToDb, updateExerciseInDb, deleteExerciseFromDb,
     plannedWorkouts, addExerciseToPlan, updatePlanExercise, removeExerciseFromPlan,
     completedSets, toggleSetCompletion, dailyDurations, userStats, resetUserStats,
     actualExerciseRests, finishWorkout,
-  };
+  }), [
+    exerciseDb, addExerciseToDb, updateExerciseInDb, deleteExerciseFromDb,
+    plannedWorkouts, addExerciseToPlan, updatePlanExercise, removeExerciseFromPlan,
+    completedSets, toggleSetCompletion, dailyDurations, userStats, resetUserStats,
+    actualExerciseRests, finishWorkout,
+  ]);
 
-  const timerValue: TimerContextType = {
+  const timerValue = useMemo(() => ({
     workoutStartTime, workoutAccumulatedMs, isWorkoutPaused,
     startWorkoutTimer, pauseWorkoutTimer, resetWorkoutTimer,
     restTimerEnd, restTimerDuration, restContext, isRestPaused, restRemainingAtPause,
     startRestTimer, pauseRestTimer, resumeRestTimer, clearRestTimer, adjustRestTimer,
-  };
+  }), [
+    workoutStartTime, workoutAccumulatedMs, isWorkoutPaused,
+    startWorkoutTimer, pauseWorkoutTimer, resetWorkoutTimer,
+    restTimerEnd, restTimerDuration, restContext, isRestPaused, restRemainingAtPause,
+    startRestTimer, pauseRestTimer, resumeRestTimer, clearRestTimer, adjustRestTimer,
+  ]);
 
   return (
     <UIContext.Provider value={uiValue}>
