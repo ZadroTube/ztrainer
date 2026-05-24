@@ -17,7 +17,7 @@ function AppContent() {
 
   useEffect(() => {
     if (!loading) {
-      window.Telegram?.WebApp?.ready();
+      window.Telegram?.WebApp?.ready?.();
     }
   }, [loading]);
 

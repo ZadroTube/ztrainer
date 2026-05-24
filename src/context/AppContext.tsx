@@ -107,6 +107,7 @@ declare global {
         initData?: string;
         version?: string;
         platform?: string;
+        ready?: () => void;
       };
     };
   }
@@ -366,6 +367,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         let initData = '';
         let isInsideTelegram = false;
         
+        const tgProxy = (window as any).TelegramWebviewProxy;
+        
         for (let i = 0; i < 30; i++) {
           const webApp = window.Telegram?.WebApp;
           initData = webApp?.initData || '';
@@ -376,16 +379,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
             break;
           }
           
-          // If platform is known (not 'unknown' and not empty), we are in Telegram
-          // (Even if initData is empty, e.g., opened via generic keyboard button)
+          // If platform is known, we are in Telegram
           if (webApp?.platform && webApp.platform !== 'unknown') {
             isInsideTelegram = true;
-            if (i > 10) break; // Give it a bit more time just in case initData arrives, then proceed
+            if (i > 5) break; // Give it a bit more time for initData
           }
           
           // Fallback check for native mobile clients
-          if ((window as any).TelegramWebviewProxy) {
+          if (tgProxy) {
             isInsideTelegram = true;
+          }
+          
+          // If no proxy, platform is unknown, and we've waited 500ms, assume not in Telegram
+          if (!tgProxy && (!webApp || webApp.platform === 'unknown') && i > 4) {
+            break;
           }
           
           await new Promise(r => setTimeout(r, 100));
