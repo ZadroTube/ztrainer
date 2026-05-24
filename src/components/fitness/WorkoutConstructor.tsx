@@ -228,8 +228,8 @@ export function WorkoutConstructor() {
                     </button>
                   </div>
                   <div className="flex items-center gap-2 mt-2">
-                    <PlanField label="Подх." value={ex.sets} onChange={(v) => updatePlanExercise(dateStr, ex.workoutId, { sets: v })} />
-                    <PlanField label="Повт." value={ex.reps} onChange={(v) => updatePlanExercise(dateStr, ex.workoutId, { reps: v })} />
+                    <PlanField label="Подх." value={ex.sets} onChange={(v) => updatePlanExercise(dateStr, ex.workoutId, { sets: Number(v) || 1 })} />
+                    <PlanField label="Повт." value={ex.reps} onChange={(v) => updatePlanExercise(dateStr, ex.workoutId, { reps: Number(v) || 1 })} />
                     <PlanField
                       label="кг"
                       value={ex.weightKg ?? ''}

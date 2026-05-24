@@ -50,7 +50,7 @@ function sanitise(html: string): string {
           return ` ${attrName}="${value.replace(/"/g, '&quot;')}"`;
         },
       ).replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-      const slash = full.startsWith('</') ? '/' : '';
+      const slash = _.startsWith('</') ? '/' : '';
       return `<${slash}${tag}${cleanedAttrs}>`;
     });
 }
