@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -87,5 +88,9 @@ export default defineConfig({
   },
   server: {
     hmr: process.env.DISABLE_HMR !== 'true',
+  },
+  test: {
+    environment: 'happy-dom',
+    exclude: ['**/node_modules/**', '**/dist/**', 'supabase/**'],
   },
 });

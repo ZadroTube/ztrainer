@@ -79,7 +79,7 @@ function isReplay(telegramId: number, authDate: number): boolean {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function parseQueryString(data: string): Record<string, string> {
+export function parseQueryString(data: string): Record<string, string> {
   const params = new URLSearchParams(data);
   const map: Record<string, string> = {};
   for (const [key, value] of params.entries()) {
@@ -88,12 +88,12 @@ function parseQueryString(data: string): Record<string, string> {
   return map;
 }
 
-function buildCheckString(params: Record<string, string>): string {
+export function buildCheckString(params: Record<string, string>): string {
   const sorted = Object.keys(params).filter(k => k !== "hash").sort();
   return sorted.map(k => `${k}=${params[k]}`).join("\n");
 }
 
-async function validateMiniAppInitData(initData: string): Promise<{ valid: boolean; error?: string }> {
+export async function validateMiniAppInitData(initData: string): Promise<{ valid: boolean; error?: string }> {
   const params = parseQueryString(initData);
   const hash = params.hash;
   if (!hash) return { valid: false, error: "Missing hash" };
@@ -119,7 +119,7 @@ async function validateMiniAppInitData(initData: string): Promise<{ valid: boole
   return hex === hash ? { valid: true } : { valid: false, error: "Invalid signature" };
 }
 
-async function validateLoginWidgetAuth(authData: string): Promise<{ valid: boolean; error?: string }> {
+export async function validateLoginWidgetAuth(authData: string): Promise<{ valid: boolean; error?: string }> {
   const params = parseQueryString(authData);
   const hash = params.hash;
   if (!hash) return { valid: false, error: "Missing hash" };
