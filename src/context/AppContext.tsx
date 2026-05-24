@@ -361,29 +361,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
           await supabase.auth.signOut();
         }
 
-        const tgProxy = (window as any).TelegramWebviewProxy;
-
-        // If we're inside Telegram (TelegramWebviewProxy exists), wait for SDK to load
-        if (tgProxy) {
-          // Wait up to 3 seconds for Telegram.WebApp.initData to become available
-          let initData = '';
-          for (let i = 0; i < 30; i++) {
-            initData = window.Telegram?.WebApp?.initData || '';
-            if (initData) break;
-            await new Promise(r => setTimeout(r, 100));
+        // Detect Telegram environment properly (works on Desktop, Web, iOS, Android)
+        // Wait up to 3 seconds for Telegram.WebApp.initData to become available
+        let initData = '';
+        let isInsideTelegram = false;
+        
+        for (let i = 0; i < 30; i++) {
+          const webApp = window.Telegram?.WebApp;
+          initData = webApp?.initData || '';
+          
+          // If initData is present, we are definitely in Telegram
+          if (initData) {
+            isInsideTelegram = true;
+            break;
           }
+          
+          // If platform is known (not 'unknown' and not empty), we are in Telegram
+          // (Even if initData is empty, e.g., opened via generic keyboard button)
+          if (webApp?.platform && webApp.platform !== 'unknown') {
+            isInsideTelegram = true;
+            if (i > 10) break; // Give it a bit more time just in case initData arrives, then proceed
+          }
+          
+          // Fallback check for native mobile clients
+          if ((window as any).TelegramWebviewProxy) {
+            isInsideTelegram = true;
+          }
+          
+          await new Promise(r => setTimeout(r, 100));
+        }
 
+        if (isInsideTelegram) {
           if (!initData) {
             setIsTelegram(true);
             const tgWebApp = window.Telegram?.WebApp;
             const debug = [
               `WebApp: ${!!tgWebApp}`,
-              `Proxy: ${!!tgProxy}`,
               `initData: "${initData}"`,
               `version: ${tgWebApp?.version ?? 'N/A'}`,
               `platform: ${tgWebApp?.platform ?? 'N/A'}`,
             ].join(', ');
-            setLoadError(`Не удалось получить initData. Debug: ${debug}`);
+            setLoadError(`Не удалось получить initData. Попробуйте открыть приложение через меню бота. Debug: ${debug}`);
             setLoading(false);
             return;
           }

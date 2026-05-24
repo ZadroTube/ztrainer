@@ -10,9 +10,16 @@ import { OfflineIndicator } from '@/components/layout/OfflineIndicator';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { LoginScreen } from '@/components/auth/LoginScreen';
 import { AlertTriangle } from 'lucide-react';
+import { useEffect } from 'react';
 
 function AppContent() {
   const { loading, needsLogin, loadError, syncError, handleWidgetAuth } = useUIContext();
+
+  useEffect(() => {
+    if (!loading) {
+      window.Telegram?.WebApp?.ready();
+    }
+  }, [loading]);
 
   if (loading) {
     return (
