@@ -1,13 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN");
+const BOT_TOKEN = (Deno.env.get("TELEGRAM_BOT_TOKEN") || Deno.env.get("TELEGRAM_TOKEN"))?.trim();
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGIN") || "https://ztrainerz.netlify.app")
   .split(",")
   .map(o => o.trim());
 
 if (!BOT_TOKEN) {
-  console.error("FATAL: TELEGRAM_BOT_TOKEN is not set in Edge Function secrets");
+  console.error("FATAL: TELEGRAM_BOT_TOKEN or TELEGRAM_TOKEN is not set in Edge Function secrets");
 }
 
 interface TelegramUser {
@@ -80,13 +80,10 @@ function isReplay(telegramId: number, authDate: number): boolean {
 // Helpers
 // ---------------------------------------------------------------------------
 function parseQueryString(data: string): Record<string, string> {
+  const params = new URLSearchParams(data);
   const map: Record<string, string> = {};
-  for (const pair of data.split("&")) {
-    const idx = pair.indexOf("=");
-    if (idx === -1) continue;
-    const key = pair.slice(0, idx);
-    const value = pair.slice(idx + 1);
-    map[key] = decodeURIComponent(value);
+  for (const [key, value] of params.entries()) {
+    map[key] = value;
   }
   return map;
 }
@@ -103,7 +100,7 @@ async function validateMiniAppInitData(initData: string): Promise<{ valid: boole
 
   const authDate = Number(params.auth_date);
   if (!authDate) return { valid: false, error: "Missing auth_date" };
-  if (Math.floor(Date.now() / 1000) - authDate > 300) {
+  if (Math.floor(Date.now() / 1000) - authDate > 86400) {
     return { valid: false, error: "initData expired" };
   }
 

@@ -15,11 +15,7 @@ import { supabase } from '@/lib/supabase';
 
 const BOT_API_BASE =
   (import.meta.env.VITE_BOT_API_URL as string | undefined) ??
-  (import.meta.env.DEV ? 'http://localhost:10000' : '');
-
-if (!import.meta.env.VITE_BOT_API_URL && import.meta.env.PROD) {
-  throw new Error('VITE_BOT_API_URL environment variable is required in production.');
-}
+  (import.meta.env.DEV ? 'http://localhost:10000' : 'https://my-family-bot-yyo9.onrender.com');
 
 async function getAuthHeader(): Promise<string> {
   // Prefer Telegram WebApp initData (set inside the Telegram client).
