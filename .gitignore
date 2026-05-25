@@ -29,3 +29,9 @@ Thumbs.db
 # Logs
 *.log
 .kiro/settings/ztrainer_tg_bot.code-workspace
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
