@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { Dumbbell, Target, Zap, Flame, Clock, Award, AlertTriangle, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
+import { BodyMetricsTracker } from './BodyMetricsTracker';
 
 function safeFormatDate(value: unknown, fmt: string): string {
   if (typeof value !== 'number' || !isFinite(value) || value <= 0) return '';
@@ -141,6 +142,9 @@ export function FitnessStats() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* Body Metrics & AI Progress Analysis */}
+      <BodyMetricsTracker />
 
       {/* Achievements List */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useUIContext, useWorkoutData } from '@/context/AppContext';
 import { supabase } from '@/lib/supabase';
-import { LogOut, Trash2, User, Brain, ChevronRight, Stars } from 'lucide-react';
+import { LogOut, Trash2, User, Brain, ChevronRight, Stars, Activity } from 'lucide-react';
 import { SectionHeader } from '@/components/layout/SectionHeader';
 import { HelpButton } from '@/components/layout/HelpButton';
 import { AIProfileModal } from '@/components/profile/AIProfileModal';
 import { HoroscopeModal } from '@/components/hub/HoroscopeModal';
+import { FitnessOnboarding } from '@/components/fitness/FitnessOnboarding';
 import { fetchMeProfile } from '@/lib/botApi';
 
 const ZODIAC_RU: Record<string, string> = {
@@ -21,6 +22,26 @@ const ZODIAC_RU: Record<string, string> = {
   capricorn: '♑ Козерог',
   aquarius: '♒ Водолей',
   pisces: '♓ Рыбы',
+};
+
+const GOAL_RU = {
+  lose_weight: 'Похудеть 🔥',
+  gain_muscle: 'Набрать массу 💪',
+  endurance: 'Выносливость 🏃',
+  general_fitness: 'Общая форма ⚡'
+};
+
+const LEVEL_RU = {
+  beginner: 'Новичок',
+  intermediate: 'Средний',
+  advanced: 'Профи'
+};
+
+const LOCATION_RU = {
+  gym: 'Зал 🏋️',
+  outdoor: 'Улица 🌳',
+  home: 'Дома 🏠',
+  combined: 'Комби 🔄'
 };
 
 const PROFILE_HELP = `# 👤 Раздел «Мой профиль»
@@ -57,6 +78,7 @@ export function ProfileTab() {
   const [signingOut, setSigningOut] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [zodiacOpen, setZodiacOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
 
   // Lightweight read of dossier preview & zodiac so the cards can show a hint.
   const [dossierPreview, setDossierPreview] = useState<string>('');
@@ -157,6 +179,37 @@ export function ProfileTab() {
         </button>
       </section>
 
+      {/* Fitness profile */}
+      <section className="mx-2 mt-6">
+        <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2 px-1">
+          Фитнес-профиль
+        </div>
+        <button
+          onClick={() => setOnboardingOpen(true)}
+          className="w-full glass rounded-2xl border border-purple-500/25 hover:border-purple-400/50 px-4 py-3 flex items-center gap-3 active:scale-[0.99] transition-all text-left"
+        >
+          <div className="w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center flex-shrink-0">
+            <Activity className="w-5 h-5 text-purple-300" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold text-white">Цели и параметры тренировок</div>
+            <div className="text-[11px] text-slate-400 mt-0.5">
+              {userProfile?.fitness_goal ? (
+                `${GOAL_RU[userProfile.fitness_goal]} · ${LEVEL_RU[userProfile.fitness_level || 'intermediate']} · ${LOCATION_RU[userProfile.training_location || 'combined']}`
+              ) : (
+                'Настроить фитнес-цели и инвентарь'
+              )}
+            </div>
+            {userProfile?.fitness_goal && userProfile?.equipment && (
+              <div className="text-[10px] text-slate-500 truncate mt-1">
+                Инвентарь: {userProfile.equipment}
+              </div>
+            )}
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-500" />
+        </button>
+      </section>
+
       {/* Danger zone */}
       <section className="mx-2 mt-6">
         <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2 px-1">
@@ -188,6 +241,7 @@ export function ProfileTab() {
 
       {aiOpen && <AIProfileModal onClose={() => { setAiOpen(false); loadMeta(); }} />}
       {zodiacOpen && <HoroscopeModal onClose={() => { setZodiacOpen(false); loadMeta(); }} />}
+      {onboardingOpen && <FitnessOnboarding onClose={() => setOnboardingOpen(false)} />}
     </div>
   );
 }

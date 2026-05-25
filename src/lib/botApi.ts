@@ -12,6 +12,7 @@
  * All requests are JSON in / JSON out.
  */
 import { supabase } from '@/lib/supabase';
+import { BodyMetric, CoachMessage, CoachAdaptation } from '@/types';
 
 const BOT_API_BASE =
   (import.meta.env.VITE_BOT_API_URL as string | undefined) ??
@@ -425,3 +426,101 @@ export function broadcastPreview(text: string, signal?: AbortSignal): Promise<Br
 export function broadcastSend(text: string, signal?: AbortSignal): Promise<BroadcastResult> {
   return request<BroadcastResult>('/api/broadcast', { method: 'POST', body: { text }, signal });
 }
+
+
+// ---------------------------------------------------------------------------
+// Fitness AI Coach
+// ---------------------------------------------------------------------------
+
+export interface AIPlanExercise {
+  name: string;
+  muscle_group?: string;
+  target_muscle_group?: string;
+  sets: number;
+  reps: number;
+  weight_kg?: number | null;
+  rest_seconds?: number;
+}
+
+export interface GeneratePlanResponse {
+  plan: Record<string, AIPlanExercise[]>;
+  summary: string;
+}
+
+export function generatePlan(
+  period: 'day' | 'week' | 'month',
+  startDate: string,
+  signal?: AbortSignal,
+): Promise<GeneratePlanResponse> {
+  return request<GeneratePlanResponse>('/api/fitness/generate-plan', {
+    method: 'POST',
+    body: { period, start_date: startDate },
+    signal,
+  });
+}
+
+export function applyPlan(
+  plan: Record<string, AIPlanExercise[]>,
+  signal?: AbortSignal,
+): Promise<{ ok: boolean; exercises_created: number }> {
+  return request('/api/fitness/apply-plan', {
+    method: 'POST',
+    body: { plan },
+    signal,
+  });
+}
+
+export function fetchBodyMetrics(signal?: AbortSignal): Promise<BodyMetric[]> {
+  return request<BodyMetric[]>('/api/fitness/metrics', { signal });
+}
+
+export function saveBodyMetrics(metrics: Partial<BodyMetric>, signal?: AbortSignal): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/api/fitness/metrics', {
+    method: 'POST',
+    body: metrics,
+    signal,
+  });
+}
+
+export function fetchProgressReport(signal?: AbortSignal): Promise<{ report: string }> {
+  return request<{ report: string }>('/api/fitness/progress-report', { signal });
+}
+
+export function fetchCoachMessages(signal?: AbortSignal): Promise<CoachMessage[]> {
+  return request<CoachMessage[]>('/api/fitness/coach/messages', { signal });
+}
+
+export function sendCoachMessage(message: string, signal?: AbortSignal): Promise<CoachMessage> {
+  return request<CoachMessage>('/api/fitness/coach/messages', {
+    method: 'POST',
+    body: { message },
+    signal,
+  });
+}
+
+export interface NoAdaptationResponse {
+  status: 'no_adaptation_needed';
+  message: string;
+}
+
+export function fetchCoachAdaptation(signal?: AbortSignal): Promise<CoachAdaptation | NoAdaptationResponse> {
+  return request<CoachAdaptation | NoAdaptationResponse>('/api/fitness/adaptation', { signal });
+}
+
+export function applyCoachAdaptation(adaptationId: string, signal?: AbortSignal): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>('/api/fitness/adaptation/apply', {
+    method: 'POST',
+    body: { adaptation_id: adaptationId },
+    signal,
+  });
+}
+
+export function dismissCoachAdaptation(adaptationId: string, signal?: AbortSignal): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>('/api/fitness/adaptation/dismiss', {
+    method: 'POST',
+    body: { adaptation_id: adaptationId },
+    signal,
+  });
+}
+
+

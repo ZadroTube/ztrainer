@@ -71,12 +71,48 @@ export interface ExerciseRestRow {
   recorded_at: string;
 }
 
+export interface BodyMetricsRow {
+  id: string;
+  user_id: string;
+  date: string;
+  weight_kg: number | null;
+  chest_cm: number | null;
+  bicep_r_cm: number | null;
+  bicep_l_cm: number | null;
+  waist_cm: number | null;
+  hips_cm: number | null;
+  thigh_r_cm: number | null;
+  thigh_l_cm: number | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface CoachChatMessageRow {
+  id: string;
+  user_id: string;
+  sender: 'user' | 'coach';
+  message: string;
+  created_at: string;
+}
+
+export interface CoachAdaptationsRow {
+  id: string;
+  user_id: string;
+  status: 'pending' | 'applied' | 'dismissed';
+  explanation: string;
+  suggested_changes: any;
+  created_at: string;
+}
+
 export interface RealtimeHandlers {
   onExerciseChange?: (payload: RealtimePostgresChangesPayload<ExerciseRow>) => void;
   onPlanChange?: (payload: RealtimePostgresChangesPayload<WorkoutPlanRow>) => void;
   onCompletedSetChange?: (payload: RealtimePostgresChangesPayload<CompletedSetRow>) => void;
   onWorkoutSessionChange?: (payload: RealtimePostgresChangesPayload<WorkoutSessionRow>) => void;
   onExerciseRestChange?: (payload: RealtimePostgresChangesPayload<ExerciseRestRow>) => void;
+  onBodyMetricsChange?: (payload: RealtimePostgresChangesPayload<BodyMetricsRow>) => void;
+  onCoachMessageChange?: (payload: RealtimePostgresChangesPayload<CoachChatMessageRow>) => void;
+  onCoachAdaptationChange?: (payload: RealtimePostgresChangesPayload<CoachAdaptationsRow>) => void;
 }
 
 /**
@@ -122,6 +158,27 @@ export function subscribeFitnessRealtime(handlers: RealtimeHandlers): () => void
       'postgres_changes',
       { event: '*', schema: 'public', table: 'exercise_rests' },
       (payload) => handlers.onExerciseRestChange?.(payload as RealtimePostgresChangesPayload<ExerciseRestRow>),
+    );
+  }
+  if (handlers.onBodyMetricsChange) {
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'body_metrics' },
+      (payload) => handlers.onBodyMetricsChange?.(payload as RealtimePostgresChangesPayload<BodyMetricsRow>),
+    );
+  }
+  if (handlers.onCoachMessageChange) {
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'coach_chat_messages' },
+      (payload) => handlers.onCoachMessageChange?.(payload as RealtimePostgresChangesPayload<CoachChatMessageRow>),
+    );
+  }
+  if (handlers.onCoachAdaptationChange) {
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'coach_adaptations' },
+      (payload) => handlers.onCoachAdaptationChange?.(payload as RealtimePostgresChangesPayload<CoachAdaptationsRow>),
     );
   }
 

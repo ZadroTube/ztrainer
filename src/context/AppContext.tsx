@@ -1,8 +1,9 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { format, subDays, differenceInCalendarDays, parseISO } from 'date-fns';
-import { TabName, BaseExercise, WorkoutExercise, PlannedWorkoutsDict, CompletedSetsDict, UserStats } from '@/types';
+import { TabName, BaseExercise, WorkoutExercise, PlannedWorkoutsDict, CompletedSetsDict, UserStats, FitnessGoal, FitnessLevel, TrainingLocation, BodyMetric, CoachMessage, CoachAdaptation } from '@/types';
 import { supabase, authViaTelegram } from '@/lib/supabase';
 import { subscribeFitnessRealtime } from '@/lib/realtime';
+import { sendCoachMessage, fetchCoachAdaptation, applyCoachAdaptation, dismissCoachAdaptation } from '@/lib/botApi';
 
 // Type-narrowing for supabase fluent builders that resolve to { data, error }.
 type SupaResult = { data?: unknown; error?: { message?: string } | null };
@@ -20,6 +21,13 @@ interface UserProfile {
   first_name?: string;
   username?: string;
   photo_url?: string;
+  fitness_goal?: FitnessGoal;
+  fitness_level?: FitnessLevel;
+  available_minutes?: number;
+  training_location?: TrainingLocation;
+  equipment?: string;
+  birth_year?: number;
+  gender?: 'male' | 'female';
 }
 
 interface ExerciseRow {
@@ -123,6 +131,7 @@ interface UIContextType {
   loadError: string | null;
   syncError: string | null;
   handleWidgetAuth: (data: { first_name?: string; username?: string; photo_url?: string }) => void;
+  updateFitnessProfile: (patch: Partial<Omit<UserProfile, 'first_name' | 'username' | 'photo_url'>>) => Promise<void>;
   activeTab: TabName;
   setActiveTab: (tab: TabName) => void;
   selectedDate: Date;
@@ -147,6 +156,13 @@ interface WorkoutDataContextType {
   resetUserStats: () => void;
   actualExerciseRests: Record<string, number>;
   finishWorkout: () => void;
+  bodyMetrics: BodyMetric[];
+  saveBodyMetrics: (metrics: Partial<BodyMetric>) => Promise<void>;
+  coachMessages: CoachMessage[];
+  sendCoachMessage: (messageText: string) => Promise<void>;
+  activeAdaptation: CoachAdaptation | null;
+  applyAdaptationAction: (id: string) => Promise<void>;
+  dismissAdaptationAction: (id: string) => Promise<void>;
 }
 
 interface TimerContextType {
@@ -204,6 +220,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [completedSets, setCompletedSets] = useState<CompletedSetsDict>({});
   const [dailyDurations, setDailyDurations] = useState<Record<string, number>>({});
   const [actualExerciseRests, setActualExerciseRests] = useState<Record<string, number>>({});
+  const [bodyMetrics, setBodyMetrics] = useState<BodyMetric[]>([]);
+  const [coachMessages, setCoachMessages] = useState<CoachMessage[]>([]);
+  const [activeAdaptation, setActiveAdaptation] = useState<CoachAdaptation | null>(null);
   const [userStats, setUserStats] = useState<UserStats>({
     totalWorkoutSeconds: 0, totalSets: 0, currentStreak: 0, achievements: {},
   });
@@ -271,15 +290,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       const since = format(subDays(new Date(), 60), 'yyyy-MM-dd');
-      const [{ data: exercises }, { data: wp }, { data: cs }, { data: ws }, { data: er }, { data: ua }] = await Promise.all([
+      const [
+        { data: profile },
+        { data: exercises },
+        { data: wp },
+        { data: cs },
+        { data: ws },
+        { data: er },
+        { data: ua },
+        { data: bm },
+        { data: ccm }
+      ] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
         supabase.from('exercises').select('*').is('archived_at', null).order('created_at'),
         supabase.from('workout_plans').select('*').gte('plan_date', since).order('sort_order'),
         supabase.from('completed_sets').select('*').gte('plan_date', since),
         supabase.from('workout_sessions').select('plan_date, duration_seconds').gte('plan_date', since),
         supabase.from('exercise_rests').select('*').gte('recorded_at', since),
         supabase.from('user_achievements').select('*'),
+        supabase.from('body_metrics').select('*').order('date', { ascending: false }).limit(60),
+        supabase.from('coach_chat_messages').select('*').order('created_at', { ascending: false }).limit(50),
       ]);
+
+      if (profile) {
+        setUserProfile(prev => ({
+          first_name: profile.first_name || prev?.first_name,
+          username: profile.username || prev?.username,
+          photo_url: profile.photo_url || prev?.photo_url,
+          fitness_goal: profile.fitness_goal,
+          fitness_level: profile.fitness_level,
+          available_minutes: profile.available_minutes,
+          training_location: profile.training_location,
+          equipment: profile.equipment,
+          birth_year: profile.birth_year,
+          gender: profile.gender,
+        }));
+      }
 
       const exerciseData = (exercises ?? []).map((r: ExerciseRow) => ({
         id: r.id, name: r.name, targetMuscleGroup: r.target_muscle_group ?? undefined,
@@ -327,6 +377,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const ach: Record<string, number> = {};
       for (const r of (ua ?? []) as AchievementRow[]) { ach[r.achievement_type] = new Date(r.unlocked_at).getTime(); }
       setUserStats(prev => ({ ...prev, achievements: ach }));
+
+      setBodyMetrics((bm ?? []) as BodyMetric[]);
+
+      const msgData = (ccm ?? []).map((r: any) => ({
+        id: r.id,
+        sender: r.sender as 'user' | 'coach',
+        message: r.message,
+        created_at: r.created_at
+      })).reverse();
+      setCoachMessages(msgData);
+
+      // Попытка загрузить рекомендации ИИ-тренера по адаптации
+      try {
+        const adData = await fetchCoachAdaptation();
+        if (adData && 'status' in adData && adData.status === 'no_adaptation_needed') {
+          setActiveAdaptation(null);
+        } else if (adData) {
+          setActiveAdaptation(adData as CoachAdaptation);
+        }
+      } catch (e) {
+        console.error('Failed to load coach adaptation:', e);
+      }
 
       // We just (re)loaded fresh data, possibly for a different user — drop any
       // out-of-tree per-exercise history caches that may have been populated
@@ -585,6 +657,91 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }));
         }
       },
+
+      onBodyMetricsChange: (payload) => {
+        const ev = payload.eventType;
+        if (ev === 'INSERT' || ev === 'UPDATE') {
+          const r = payload.new;
+          const mapped: BodyMetric = {
+            id: r.id,
+            date: r.date,
+            weight_kg: r.weight_kg != null ? Number(r.weight_kg) : null,
+            chest_cm: r.chest_cm != null ? Number(r.chest_cm) : null,
+            bicep_r_cm: r.bicep_r_cm != null ? Number(r.bicep_r_cm) : null,
+            bicep_l_cm: r.bicep_l_cm != null ? Number(r.bicep_l_cm) : null,
+            waist_cm: r.waist_cm != null ? Number(r.waist_cm) : null,
+            hips_cm: r.hips_cm != null ? Number(r.hips_cm) : null,
+            thigh_r_cm: r.thigh_r_cm != null ? Number(r.thigh_r_cm) : null,
+            thigh_l_cm: r.thigh_l_cm != null ? Number(r.thigh_l_cm) : null,
+            notes: r.notes,
+          };
+          setBodyMetrics(prev => {
+            const idx = prev.findIndex(m => m.date === r.date);
+            let next: BodyMetric[];
+            if (idx === -1) {
+              next = [mapped, ...prev];
+            } else {
+              next = prev.map((m, i) => i === idx ? mapped : m);
+            }
+            return next.sort((a, b) => b.date.localeCompare(a.date));
+          });
+        } else if (ev === 'DELETE') {
+          const old = payload.old;
+          if (old?.id) {
+            setBodyMetrics(prev => prev.filter(m => m.id !== old.id));
+          }
+        }
+      },
+
+      onCoachMessageChange: (payload) => {
+        const ev = payload.eventType;
+        if (ev === 'INSERT') {
+          const r = payload.new;
+          const mapped: CoachMessage = {
+            id: r.id,
+            sender: r.sender,
+            message: r.message,
+            created_at: r.created_at,
+          };
+          setCoachMessages(prev => {
+            if (prev.some(m => m.id === r.id || (m.sender === r.sender && m.message === r.message && m.id.startsWith('temp-')))) {
+              return prev.map(m => 
+                (m.sender === r.sender && m.message === r.message && m.id.startsWith('temp-')) ? mapped : m
+              );
+            }
+            return [...prev, mapped];
+          });
+        } else if (ev === 'DELETE') {
+          const old = payload.old;
+          if (old?.id) {
+            setCoachMessages(prev => prev.filter(m => m.id !== old.id));
+          }
+        }
+      },
+
+      onCoachAdaptationChange: (payload) => {
+        const ev = payload.eventType;
+        if (ev === 'INSERT' || ev === 'UPDATE') {
+          const r = payload.new;
+          if (r.status === 'pending') {
+            const mapped: CoachAdaptation = {
+              id: r.id,
+              status: r.status as 'pending' | 'applied' | 'dismissed',
+              explanation: r.explanation,
+              suggested_changes: r.suggested_changes,
+              created_at: r.created_at,
+            };
+            setActiveAdaptation(mapped);
+          } else {
+            setActiveAdaptation(prev => prev?.id === r.id ? null : prev);
+          }
+        } else if (ev === 'DELETE') {
+          const old = payload.old;
+          if (old?.id) {
+            setActiveAdaptation(prev => prev?.id === old.id ? null : prev);
+          }
+        }
+      },
     });
 
     return unsubscribe;
@@ -599,6 +756,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await ensureProfile(data);
     await loadFromSupabase();
   }, [ensureProfile, loadFromSupabase]);
+
+  const updateFitnessProfile = useCallback(async (patch: Partial<Omit<UserProfile, 'first_name' | 'username' | 'photo_url'>>) => {
+    setUserProfile(prev => prev ? { ...prev, ...patch } : null);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supaSafe(
+      supabase.from('profiles').update(patch).eq('id', user.id),
+      'profiles update',
+      () => {
+        // Rollback: reload from database to restore original state on error
+        loadFromSupabase();
+      }
+    );
+  }, [loadFromSupabase]);
 
   // --- Stats derivation ---
   // IMPORTANT: this effect must NOT depend on userStats.achievements, otherwise
@@ -849,28 +1021,150 @@ export function AppProvider({ children }: { children: ReactNode }) {
     resetWorkoutTimer(); clearRestTimer();
   }, [workoutAccumulatedMs, workoutStartTime, isWorkoutPaused, selectedDate, resetWorkoutTimer, clearRestTimer]);
 
+  const saveBodyMetrics = useCallback(async (data: Partial<BodyMetric>) => {
+    if (!data.date) return;
+    const weight_kg = data.weight_kg !== undefined ? data.weight_kg : null;
+    const chest_cm = data.chest_cm !== undefined ? data.chest_cm : null;
+    const bicep_r_cm = data.bicep_r_cm !== undefined ? data.bicep_r_cm : null;
+    const bicep_l_cm = data.bicep_l_cm !== undefined ? data.bicep_l_cm : null;
+    const waist_cm = data.waist_cm !== undefined ? data.waist_cm : null;
+    const hips_cm = data.hips_cm !== undefined ? data.hips_cm : null;
+    const thigh_r_cm = data.thigh_r_cm !== undefined ? data.thigh_r_cm : null;
+    const thigh_l_cm = data.thigh_l_cm !== undefined ? data.thigh_l_cm : null;
+    const notes = data.notes !== undefined ? data.notes : null;
+
+    const id = data.id || crypto.randomUUID();
+    const updatedItem: BodyMetric = {
+      id,
+      date: data.date,
+      weight_kg,
+      chest_cm,
+      bicep_r_cm,
+      bicep_l_cm,
+      waist_cm,
+      hips_cm,
+      thigh_r_cm,
+      thigh_l_cm,
+      notes,
+    };
+
+    let originalState: BodyMetric[] = [];
+    setBodyMetrics(prev => {
+      originalState = prev;
+      const idx = prev.findIndex(m => m.date === data.date);
+      let next: BodyMetric[];
+      if (idx === -1) {
+        next = [updatedItem, ...prev];
+      } else {
+        next = prev.map((m, i) => i === idx ? { ...m, ...data } : m);
+      }
+      return next.sort((a, b) => b.date.localeCompare(a.date));
+    });
+
+    await supaSafe(
+      supabase.from('body_metrics').upsert({
+        id,
+        date: data.date,
+        weight_kg,
+        chest_cm,
+        bicep_r_cm,
+        bicep_l_cm,
+        waist_cm,
+        hips_cm,
+        thigh_r_cm,
+        thigh_l_cm,
+        notes,
+      }, { onConflict: 'user_id, date' }),
+      'body_metrics upsert',
+      () => setBodyMetrics(originalState)
+    );
+  }, []);
+
+  const sendCoachMessageAction = useCallback(async (messageText: string) => {
+    const tempId = `temp-${Date.now()}`;
+    const userMsg: CoachMessage = {
+      id: tempId,
+      sender: 'user',
+      message: messageText,
+      created_at: new Date().toISOString()
+    };
+
+    setCoachMessages(prev => [...prev, userMsg]);
+
+    try {
+      const reply = await sendCoachMessage(messageText);
+      setCoachMessages(prev => {
+        const withoutTemp = prev.filter(m => m.id !== tempId);
+        if (prev.some(m => m.id === reply.id)) {
+          return withoutTemp;
+        }
+        return [...withoutTemp, reply];
+      });
+    } catch (err) {
+      console.error('Failed to send coach message:', err);
+      notifySyncError('Не удалось отправить сообщение тренеру.');
+      setCoachMessages(prev => prev.filter(m => m.id !== tempId));
+      setTimeout(() => notifySyncError(null), 5000);
+      throw err;
+    }
+  }, []);
+
+  const applyAdaptationAction = useCallback(async (id: string) => {
+    const original = activeAdaptation;
+    setActiveAdaptation(null);
+    try {
+      const res = await applyCoachAdaptation(id);
+      if (!res.success) {
+        throw new Error('Failed to apply adaptation');
+      }
+      await loadFromSupabase();
+    } catch (err) {
+      console.error('Failed to apply adaptation:', err);
+      notifySyncError('Не удалось применить рекомендации.');
+      setActiveAdaptation(original);
+      setTimeout(() => notifySyncError(null), 5000);
+      throw err;
+    }
+  }, [activeAdaptation, loadFromSupabase]);
+
+  const dismissAdaptationAction = useCallback(async (id: string) => {
+    const original = activeAdaptation;
+    setActiveAdaptation(null);
+    try {
+      const res = await dismissCoachAdaptation(id);
+      if (!res.success) {
+        throw new Error('Failed to dismiss adaptation');
+      }
+    } catch (err) {
+      console.error('Failed to dismiss adaptation:', err);
+      notifySyncError('Не удалось отклонить рекомендации.');
+      setActiveAdaptation(original);
+      setTimeout(() => notifySyncError(null), 5000);
+      throw err;
+    }
+  }, [activeAdaptation]);
+
   const resetUserStats = useCallback(() => {
-    setDailyDurations({}); setCompletedSets({}); setActualExerciseRests({}); setPlannedWorkouts({});
+    setDailyDurations({}); setCompletedSets({}); setActualExerciseRests({}); setPlannedWorkouts({}); setBodyMetrics([]); setCoachMessages([]);
+    setActiveAdaptation(null);
     setUserStats({ totalWorkoutSeconds: 0, totalSets: 0, currentStreak: 0, achievements: {} });
-    // PostgREST refuses unconditional DELETE/UPDATE for safety — we add a
-    // tautological filter (id IS NOT NULL) to satisfy that requirement.
-    // RLS still scopes the operation to the current user_id = auth.uid().
     supaSafe(supabase.from('workout_sessions').delete().not('id', 'is', null), 'reset workout_sessions');
     supaSafe(supabase.from('completed_sets').delete().not('id', 'is', null), 'reset completed_sets');
     supaSafe(supabase.from('exercise_rests').delete().not('id', 'is', null), 'reset exercise_rests');
     supaSafe(supabase.from('workout_plans').delete().not('id', 'is', null), 'reset workout_plans');
     supaSafe(supabase.from('user_achievements').delete().not('id', 'is', null), 'reset user_achievements');
-    // Bump cache epoch so any out-of-tree caches (e.g. exercise history in
-    // WorkoutConstructor) know to discard their entries.
+    supaSafe(supabase.from('body_metrics').delete().not('id', 'is', null), 'reset body_metrics');
+    supaSafe(supabase.from('coach_chat_messages').delete().not('id', 'is', null), 'reset coach_chat_messages');
+    supaSafe(supabase.from('coach_adaptations').delete().not('id', 'is', null), 'reset coach_adaptations');
     bumpHistoryCache();
   }, []);
 
   // --- Context values ---
   const uiValue = useMemo(() => ({
-    loading, needsLogin, isTelegram, userProfile, loadError, syncError, handleWidgetAuth,
+    loading, needsLogin, isTelegram, userProfile, loadError, syncError, handleWidgetAuth, updateFitnessProfile,
     activeTab, setActiveTab, selectedDate, setSelectedDate, viewMode, setViewMode,
   }), [
-    loading, needsLogin, isTelegram, userProfile, loadError, syncError, handleWidgetAuth,
+    loading, needsLogin, isTelegram, userProfile, loadError, syncError, handleWidgetAuth, updateFitnessProfile,
     activeTab, selectedDate, viewMode,
   ]);
 
@@ -879,11 +1173,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     plannedWorkouts, addExerciseToPlan, updatePlanExercise, removeExerciseFromPlan,
     completedSets, toggleSetCompletion, dailyDurations, userStats, resetUserStats,
     actualExerciseRests, finishWorkout,
+    bodyMetrics, saveBodyMetrics,
+    coachMessages, sendCoachMessage: sendCoachMessageAction,
+    activeAdaptation, applyAdaptationAction, dismissAdaptationAction,
   }), [
     exerciseDb, addExerciseToDb, updateExerciseInDb, deleteExerciseFromDb,
     plannedWorkouts, addExerciseToPlan, updatePlanExercise, removeExerciseFromPlan,
     completedSets, toggleSetCompletion, dailyDurations, userStats, resetUserStats,
     actualExerciseRests, finishWorkout,
+    bodyMetrics, saveBodyMetrics,
+    coachMessages, sendCoachMessageAction,
+    activeAdaptation, applyAdaptationAction, dismissAdaptationAction,
   ]);
 
   const timerValue = useMemo(() => ({

@@ -30,3 +30,48 @@ export interface UserStats {
   currentStreak: number;
   achievements: Record<string, number>; // achievementId -> unlockedAt timestamp
 }
+
+export type FitnessGoal = 'lose_weight' | 'gain_muscle' | 'endurance' | 'general_fitness';
+export type FitnessLevel = 'beginner' | 'intermediate' | 'advanced';
+export type TrainingLocation = 'gym' | 'outdoor' | 'home' | 'combined';
+
+export interface BodyMetric {
+  id?: string;
+  user_id?: string;
+  date: string;
+  weight_kg?: number | null;
+  chest_cm?: number | null;
+  bicep_r_cm?: number | null;
+  bicep_l_cm?: number | null;
+  waist_cm?: number | null;
+  hips_cm?: number | null;
+  thigh_r_cm?: number | null;
+  thigh_l_cm?: number | null;
+  notes?: string | null;
+  created_at?: string;
+}
+
+export interface CoachMessage {
+  id: string;
+  sender: 'user' | 'coach';
+  message: string;
+  created_at: string;
+}
+
+export interface AdaptationChange {
+  workout_plan_id: string;
+  exercise_name: string;
+  old_values: { sets: number; reps: number; weight_kg?: number };
+  new_values: { sets: number; reps: number; weight_kg?: number };
+}
+
+export interface CoachAdaptation {
+  id: string;
+  status: 'pending' | 'applied' | 'dismissed';
+  explanation: string;
+  suggested_changes: AdaptationChange[];
+  created_at: string;
+}
+
+
+

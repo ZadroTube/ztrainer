@@ -5,12 +5,15 @@ import { useUIContext, useWorkoutData, useTimerContext } from '@/context/AppCont
 import { cn } from '@/lib/utils';
 import {
   Activity, Wrench, PieChart, Play, Pause, RotateCcw,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, MessageSquare,
 } from 'lucide-react';
 import { WorkoutTracker } from '@/components/fitness/WorkoutTracker';
 import { WorkoutConstructor } from '@/components/fitness/WorkoutConstructor';
+import { FitnessOnboarding } from '@/components/fitness/FitnessOnboarding';
+import { CoachChat } from '@/components/fitness/CoachChat';
 import { SectionHeader } from '@/components/layout/SectionHeader';
 import { HelpButton } from '@/components/layout/HelpButton';
+import { AdaptationBanner } from '@/components/fitness/AdaptationBanner';
 
 const FitnessStats = lazy(() =>
   import('@/components/fitness/FitnessStats').then((m) => ({ default: m.FitnessStats })),
@@ -184,7 +187,7 @@ function CalendarStrip() {
   );
 }
 
-type SubTab = 'today' | 'plan' | 'progress';
+type SubTab = 'today' | 'plan' | 'progress' | 'coach';
 
 /**
  * Top-level Fitness tab.
@@ -200,9 +203,19 @@ type SubTab = 'today' | 'plan' | 'progress';
  * we set it here based on the selected date and `dailyDurations`.
  */
 export function FitnessTab() {
-  const { selectedDate, setViewMode } = useUIContext();
+  const { selectedDate, setViewMode, userProfile } = useUIContext();
   const { dailyDurations } = useWorkoutData();
   const [subTab, setSubTab] = useState<SubTab>('today');
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    if (userProfile && !userProfile.fitness_goal) {
+      const dismissed = localStorage.getItem('fitness_onboarding_dismissed');
+      if (!dismissed) {
+        setShowOnboarding(true);
+      }
+    }
+  }, [userProfile]);
 
   // Implicit mode: future/today empty → plan; today closed or past with history → diary.
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -216,6 +229,9 @@ export function FitnessTab() {
 
   return (
     <div className="flex flex-col space-y-3 pb-24">
+      {showOnboarding && (
+        <FitnessOnboarding onClose={() => setShowOnboarding(false)} />
+      )}
       <SectionHeader brand="ZTrainer" title="Тренировки" rightSlot={
         <div className="flex items-center gap-2">
           <HeaderControls />
@@ -225,34 +241,44 @@ export function FitnessTab() {
 
       <CalendarStrip />
 
+      <AdaptationBanner />
+
       {/* Top-level subtabs — single source of navigation */}
-      <div className="flex gap-2 mx-2">
+      <div className="flex gap-1.5 mx-1">
         <SubTabButton
           active={subTab === 'today'}
           onClick={() => setSubTab('today')}
-          icon={<Activity className="w-4 h-4" />}
+          icon={<Activity className="w-3.5 h-3.5" />}
           label="Сегодня"
           accent="cyan"
         />
         <SubTabButton
           active={subTab === 'plan'}
           onClick={() => setSubTab('plan')}
-          icon={<Wrench className="w-4 h-4" />}
+          icon={<Wrench className="w-3.5 h-3.5" />}
           label="План"
           accent="purple"
         />
         <SubTabButton
           active={subTab === 'progress'}
           onClick={() => setSubTab('progress')}
-          icon={<PieChart className="w-4 h-4" />}
+          icon={<PieChart className="w-3.5 h-3.5" />}
           label="Прогресс"
           accent="magenta"
+        />
+        <SubTabButton
+          active={subTab === 'coach'}
+          onClick={() => setSubTab('coach')}
+          icon={<MessageSquare className="w-3.5 h-3.5" />}
+          label="Тренер"
+          accent="emerald"
         />
       </div>
 
       <div className="px-2">
         {subTab === 'today' && <WorkoutTracker onGoToPlan={() => setSubTab('plan')} />}
         {subTab === 'plan' && <WorkoutConstructor />}
+        {subTab === 'coach' && <CoachChat />}
         {subTab === 'progress' && (
           <Suspense
             fallback={
@@ -277,14 +303,16 @@ function SubTabButton({
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
-  accent: 'cyan' | 'purple' | 'magenta';
+  accent: 'cyan' | 'purple' | 'magenta' | 'emerald';
 }) {
   const accentClass =
     accent === 'cyan'
       ? 'border-cyan-500/30 text-cyan-300'
       : accent === 'purple'
         ? 'border-purple-500/30 text-purple-300'
-        : 'border-magenta-500/30 text-magenta-300';
+        : accent === 'magenta'
+          ? 'border-magenta-500/30 text-magenta-300'
+          : 'border-emerald-500/30 text-emerald-300';
   return (
     <button
       onClick={onClick}

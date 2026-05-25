@@ -10,6 +10,7 @@ const mockBuilder: any = {
   select: vi.fn(() => mockBuilder),
   is: vi.fn(() => mockBuilder),
   order: vi.fn(() => mockBuilder),
+  limit: vi.fn(() => mockBuilder),
   gte: vi.fn(() => mockBuilder),
   lte: vi.fn(() => mockBuilder),
   eq: vi.fn(() => mockBuilder),

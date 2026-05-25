@@ -7,10 +7,11 @@ import {
 import { BaseExercise } from '@/types';
 import {
   Search, Plus, Trash2, Dumbbell, Edit2, X, TrendingUp,
-  CalendarDays, MoreVertical,
+  CalendarDays, MoreVertical, Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fetchExerciseHistory } from '@/lib/supabase';
+import { GeneratePlanModal } from './GeneratePlanModal';
 
 type HistoryRow = { plan_date: string; weight_kg: number | null; sets: number; reps: number };
 type Mode = 'day' | 'library';
@@ -41,6 +42,7 @@ export function WorkoutConstructor() {
   const [historyId, setHistoryId] = useState<string | null>(null);
   const [historyData, setHistoryData] = useState<HistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
 
   // Per-component history cache, scoped to a particular cache epoch coming
   // from AppContext.
@@ -182,14 +184,22 @@ export function WorkoutConstructor() {
       {mode === 'day' ? (
         <>
           {todaysPlan.length === 0 ? (
-            <div className="bg-slate-900/40 border border-dashed border-slate-700/60 rounded-2xl p-8 text-center space-y-3">
+            <div className="bg-slate-900/40 border border-dashed border-slate-700/60 rounded-2xl p-8 text-center space-y-4">
               <p className="text-slate-400 text-sm">План на этот день пока пуст.</p>
-              <button
-                onClick={() => setMode('library')}
-                className="active:scale-95 px-5 py-2.5 bg-cyan-500/15 border border-cyan-500/40 text-cyan-200 hover:bg-cyan-500/25 rounded-xl font-medium text-sm transition-all inline-flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" /> Добавить из базы
-              </button>
+              <div className="flex flex-col sm:flex-row gap-2 justify-center max-w-[280px] sm:max-w-none mx-auto">
+                <button
+                  onClick={() => setMode('library')}
+                  className="active:scale-95 px-4 py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 rounded-xl font-medium text-xs transition-all inline-flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" /> Добавить из базы
+                </button>
+                <button
+                  onClick={() => setAiModalOpen(true)}
+                  className="active:scale-95 px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-indigo-500 text-white shadow-[0_4px_12px_rgba(6,182,212,0.2)] hover:brightness-110 rounded-xl font-medium text-xs transition-all inline-flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4 animate-pulse" /> Сгенерировать ИИ-план
+                </button>
+              </div>
             </div>
           ) : (
             <div className="space-y-2">
@@ -242,12 +252,20 @@ export function WorkoutConstructor() {
                   </div>
                 </div>
               ))}
-              <button
-                onClick={() => setMode('library')}
-                className="active:scale-95 w-full mt-1 px-4 py-2.5 rounded-xl border border-dashed border-slate-700/60 text-slate-400 hover:text-cyan-300 hover:border-cyan-500/40 text-sm font-medium transition-all inline-flex items-center justify-center gap-2"
-              >
-                <Plus className="w-4 h-4" /> Добавить ещё упражнение
-              </button>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => setMode('library')}
+                  className="active:scale-95 flex-1 px-4 py-2.5 rounded-xl border border-dashed border-slate-700/60 text-slate-400 hover:text-cyan-300 hover:border-cyan-500/40 text-xs font-medium transition-all inline-flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" /> Добавить вручную
+                </button>
+                <button
+                  onClick={() => setAiModalOpen(true)}
+                  className="active:scale-95 px-4 py-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 hover:bg-cyan-500/20 text-xs font-medium transition-all inline-flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4" /> Генератор ИИ
+                </button>
+              </div>
             </div>
           )}
         </>
@@ -388,6 +406,15 @@ export function WorkoutConstructor() {
             )}
           </div>
         </>
+      )}
+
+      {aiModalOpen && (
+        <GeneratePlanModal
+          onClose={() => setAiModalOpen(false)}
+          onSuccess={() => {
+            // AppContext syncs via Supabase Realtime channel
+          }}
+        />
       )}
     </div>
   );
