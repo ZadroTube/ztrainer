@@ -83,6 +83,7 @@ export function FitnessOnboarding({ onClose }: FitnessOnboardingProps) {
   const [availableMinutes, setAvailableMinutes] = useState<number>(userProfile?.available_minutes || 60);
   const [gender, setGender] = useState<'male' | 'female' | undefined>(userProfile?.gender);
   const [birthYear, setBirthYear] = useState<string>(userProfile?.birth_year ? String(userProfile.birth_year) : '');
+  const [healthLimitations, setHealthLimitations] = useState<string>(userProfile?.health_limitations || '');
 
   const handleDismiss = () => {
     localStorage.setItem('fitness_onboarding_dismissed', 'true');
@@ -128,7 +129,8 @@ export function FitnessOnboarding({ onClose }: FitnessOnboardingProps) {
         equipment: equipmentStr || undefined,
         available_minutes: availableMinutes,
         gender: gender || undefined,
-        birth_year: birthYear ? parseInt(birthYear, 10) : undefined
+        birth_year: birthYear ? parseInt(birthYear, 10) : undefined,
+        health_limitations: healthLimitations || undefined
       });
       localStorage.setItem('fitness_onboarding_dismissed', 'true');
       onClose();
@@ -392,6 +394,22 @@ export function FitnessOnboarding({ onClose }: FitnessOnboardingProps) {
                 />
                 <p className="text-[10px] text-slate-500 leading-tight">
                   Помогает ИИ делать поправку на возраст при расчете нагрузок и кардиозон.
+                </p>
+              </div>
+
+              <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                <h4 className="text-sm font-bold text-slate-200 flex items-center gap-1.5">
+                  Ограничения по здоровью / Пожелания:
+                </h4>
+                <textarea
+                  value={healthLimitations}
+                  onChange={(e) => setHealthLimitations(e.target.value)}
+                  placeholder="Например: варикоз, боли в коленях, исключить прыжки, алкоголь на выходных..."
+                  rows={2}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 transition-colors resize-none"
+                />
+                <p className="text-[10px] text-slate-500 leading-tight">
+                  ИИ-тренер учтет эти пожелания при составлении планов тренировок и в общении.
                 </p>
               </div>
             </div>

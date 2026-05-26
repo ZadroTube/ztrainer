@@ -3,7 +3,7 @@ import { format, subDays, differenceInCalendarDays, parseISO } from 'date-fns';
 import { TabName, BaseExercise, WorkoutExercise, PlannedWorkoutsDict, CompletedSetsDict, UserStats, FitnessGoal, FitnessLevel, TrainingLocation, BodyMetric, CoachMessage, CoachAdaptation } from '@/types';
 import { supabase, authViaTelegram } from '@/lib/supabase';
 import { subscribeFitnessRealtime } from '@/lib/realtime';
-import { sendCoachMessage, fetchCoachAdaptation, applyCoachAdaptation, dismissCoachAdaptation } from '@/lib/botApi';
+import { sendCoachMessage, fetchCoachAdaptation, applyCoachAdaptation, dismissCoachAdaptation, deleteCoachMessage as apiDeleteCoachMessage, clearCoachChat as apiClearCoachChat } from '@/lib/botApi';
 
 // Type-narrowing for supabase fluent builders that resolve to { data, error }.
 type SupaResult = { data?: unknown; error?: { message?: string } | null };
@@ -28,6 +28,7 @@ interface UserProfile {
   equipment?: string;
   birth_year?: number;
   gender?: 'male' | 'female';
+  health_limitations?: string;
 }
 
 interface ExerciseRow {
@@ -160,6 +161,8 @@ interface WorkoutDataContextType {
   saveBodyMetrics: (metrics: Partial<BodyMetric>) => Promise<void>;
   coachMessages: CoachMessage[];
   sendCoachMessage: (messageText: string) => Promise<void>;
+  deleteCoachMessage: (id: string) => Promise<void>;
+  clearCoachChat: () => Promise<void>;
   activeAdaptation: CoachAdaptation | null;
   applyAdaptationAction: (id: string) => Promise<void>;
   dismissAdaptationAction: (id: string) => Promise<void>;
@@ -328,6 +331,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           equipment: profile.equipment,
           birth_year: profile.birth_year,
           gender: profile.gender,
+          health_limitations: profile.health_limitations,
         }));
       }
 
@@ -1109,6 +1113,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const deleteCoachMessageAction = useCallback(async (id: string) => {
+    setCoachMessages(prev => prev.filter(m => m.id !== id));
+    try {
+      await apiDeleteCoachMessage(id);
+    } catch (err) {
+      console.error('Failed to delete coach message:', err);
+      notifySyncError('Не удалось удалить сообщение.');
+      loadFromSupabase();
+      setTimeout(() => notifySyncError(null), 5000);
+      throw err;
+    }
+  }, [loadFromSupabase]);
+
+  const clearCoachChatAction = useCallback(async () => {
+    setCoachMessages([]);
+    try {
+      await apiClearCoachChat();
+    } catch (err) {
+      console.error('Failed to clear coach chat:', err);
+      notifySyncError('Не удалось очистить чат.');
+      loadFromSupabase();
+      setTimeout(() => notifySyncError(null), 5000);
+      throw err;
+    }
+  }, [loadFromSupabase]);
+
   const applyAdaptationAction = useCallback(async (id: string) => {
     const original = activeAdaptation;
     setActiveAdaptation(null);
@@ -1175,6 +1205,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     actualExerciseRests, finishWorkout,
     bodyMetrics, saveBodyMetrics,
     coachMessages, sendCoachMessage: sendCoachMessageAction,
+    deleteCoachMessage: deleteCoachMessageAction,
+    clearCoachChat: clearCoachChatAction,
     activeAdaptation, applyAdaptationAction, dismissAdaptationAction,
   }), [
     exerciseDb, addExerciseToDb, updateExerciseInDb, deleteExerciseFromDb,
@@ -1183,6 +1215,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     actualExerciseRests, finishWorkout,
     bodyMetrics, saveBodyMetrics,
     coachMessages, sendCoachMessageAction,
+    deleteCoachMessageAction, clearCoachChatAction,
     activeAdaptation, applyAdaptationAction, dismissAdaptationAction,
   ]);
 

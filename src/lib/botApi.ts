@@ -498,6 +498,20 @@ export function sendCoachMessage(message: string, signal?: AbortSignal): Promise
   });
 }
 
+export function deleteCoachMessage(messageId: string, signal?: AbortSignal): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/fitness/coach/messages?id=${messageId}`, {
+    method: 'DELETE',
+    signal,
+  });
+}
+
+export function clearCoachChat(signal?: AbortSignal): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/api/fitness/coach/messages', {
+    method: 'DELETE',
+    signal,
+  });
+}
+
 export interface NoAdaptationResponse {
   status: 'no_adaptation_needed';
   message: string;
