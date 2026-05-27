@@ -4,7 +4,7 @@ import { TabName, BaseExercise, WorkoutExercise, PlannedWorkoutsDict, CompletedS
 import { supabase, authViaTelegram } from '@/lib/supabase';
 import { subscribeFitnessRealtime } from '@/lib/realtime';
 import { sendCoachMessage, fetchCoachAdaptation, applyCoachAdaptation, dismissCoachAdaptation, deleteCoachMessage as apiDeleteCoachMessage, clearCoachChat as apiClearCoachChat } from '@/lib/botApi';
-import { db } from '@/lib/db';
+import { db, type LocalBodyMetric } from '@/lib/db';
 import { processSyncQueue } from '@/lib/syncManager';
 
 
@@ -1628,7 +1628,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
         options: { onConflict: 'user_id, date' }
       },
-      () => db.body_metrics.put(updatedItem),
+      () => db.body_metrics.put(updatedItem as LocalBodyMetric),
       () => setBodyMetrics(originalState)
     );
   }, [executeMutation]);
