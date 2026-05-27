@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import {
   useWorkoutData, useUIContext,
   subscribeHistoryCache, getHistoryCacheEpoch,
@@ -592,33 +594,81 @@ function LibraryRow({
         </div>
       )}
 
-      {historyOpen && (
-        <div className="mt-2 glass-perf rounded-xl p-3 border border-slate-700/50 animate-in slide-in-from-top-2 fade-in">
-          <h4 className="text-xs font-bold text-cyan-300 mb-2 uppercase tracking-wider">
-            История
-          </h4>
-          {historyLoading ? (
-            <div className="flex items-center gap-2 text-slate-400 text-xs">
-              <div className="w-4 h-4 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin" />
-              Загрузка...
-            </div>
-          ) : historyData.length === 0 ? (
-            <p className="text-slate-500 text-xs">Нет данных</p>
-          ) : (
-            <div className="space-y-1.5">
-              {historyData.map((h, i) => (
-                <div key={i} className="flex items-center justify-between text-xs">
-                  <span className="text-slate-300">{h.plan_date}</span>
-                  <span className="text-slate-400 tabular-nums">
-                    {h.sets}×{h.reps}
-                    {h.weight_kg ? ` · ${h.weight_kg} кг` : ''}
-                  </span>
+      {historyOpen && (() => {
+        const weightHistory = [...historyData]
+          .filter(h => h.weight_kg !== null)
+          .reverse()
+          .map(h => {
+            let formattedDate = h.plan_date;
+            try {
+              const d = new Date(h.plan_date);
+              formattedDate = format(d, 'd MMM', { locale: ru });
+            } catch (e) {
+              // Ignore
+            }
+            return {
+              ...h,
+              formattedDate,
+              weight: h.weight_kg
+            };
+          });
+
+        const hasChartData = weightHistory.length >= 2;
+
+        return (
+          <div className="mt-2 glass-perf rounded-xl p-3 border border-slate-700/50 animate-in slide-in-from-top-2 fade-in">
+            <h4 className="text-xs font-bold text-cyan-300 mb-2 uppercase tracking-wider">
+              История
+            </h4>
+            {historyLoading ? (
+              <div className="flex items-center gap-2 text-slate-400 text-xs">
+                <div className="w-4 h-4 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin" />
+                Загрузка...
+              </div>
+            ) : historyData.length === 0 ? (
+              <p className="text-slate-500 text-xs">Нет данных</p>
+            ) : (
+              <div className="space-y-3">
+                {hasChartData && (
+                  <div className="h-[120px] w-full bg-slate-950/40 border border-slate-800/80 rounded-xl p-2 mb-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={weightHistory} margin={{ top: 5, right: 5, left: -25, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                        <XAxis dataKey="formattedDate" tick={{ fill: '#64748b', fontSize: 9 }} tickLine={false} axisLine={false} />
+                        <YAxis domain={['dataMin - 2', 'dataMax + 2']} tick={{ fill: '#64748b', fontSize: 9 }} tickLine={false} axisLine={false} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#f8fafc', fontSize: '10px' }}
+                          itemStyle={{ color: '#22d3ee' }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="weight"
+                          name="Вес (кг)"
+                          stroke="#06b6d4"
+                          strokeWidth={2}
+                          dot={{ r: 3, strokeWidth: 1 }}
+                          activeDot={{ r: 5 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+                <div className="space-y-1.5 max-h-[120px] overflow-y-auto pr-1 scrollbar-thin">
+                  {historyData.map((h, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-300">{h.plan_date}</span>
+                      <span className="text-slate-400 tabular-nums">
+                        {h.sets}×{h.reps}
+                        {h.weight_kg ? ` · ${h.weight_kg} кг` : ''}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

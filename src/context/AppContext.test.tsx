@@ -54,6 +54,40 @@ vi.mock('@/lib/realtime', () => {
   };
 });
 
+// Mock Dexie DB
+vi.mock('@/lib/db', () => {
+  const mockTable = {
+    toArray: vi.fn(() => Promise.resolve([])),
+    put: vi.fn(() => Promise.resolve()),
+    update: vi.fn(() => Promise.resolve()),
+    delete: vi.fn(() => Promise.resolve()),
+    clear: vi.fn(() => Promise.resolve()),
+    bulkPut: vi.fn(() => Promise.resolve()),
+    where: vi.fn(() => ({
+      equals: vi.fn(() => ({
+        delete: vi.fn(() => Promise.resolve())
+      }))
+    })),
+    add: vi.fn(() => Promise.resolve(1)),
+    orderBy: vi.fn(() => ({
+      toArray: vi.fn(() => Promise.resolve([]))
+    }))
+  };
+  return {
+    db: {
+      exercises: mockTable,
+      workout_plans: mockTable,
+      completed_sets: mockTable,
+      workout_sessions: mockTable,
+      exercise_rests: mockTable,
+      user_achievements: mockTable,
+      body_metrics: mockTable,
+      sync_queue: mockTable,
+    }
+  };
+});
+
+
 // Helper component to check the context state
 function ContextChecker() {
   const ui = useAppContext();
@@ -307,7 +341,7 @@ describe('AppContext Optimistic Updates and Rollback logic', () => {
   });
 
   test('optimistic update for toggleSetCompletion rolls back on Supabase error', async () => {
-    nextSupaResult = { data: null, error: { message: 'Network Timeout' } };
+    nextSupaResult = { data: null, error: { message: 'Database constraint failed' } };
     
     render(
       <AppProvider>

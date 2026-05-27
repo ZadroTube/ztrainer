@@ -10,12 +10,14 @@
     "clean": "node -e \"import('fs').then(f=>f.rmSync('dist',{recursive:true,force:true}))\" || rd /s /q dist 2>nul",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "supabase:types": "supabase gen types typescript --project-id zcirdncgxliympzhjxiu > src/types/supabase.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
     "clsx": "2.1.1",
     "date-fns": "^4.1.0",
+    "dexie": "^4.4.2",
     "lucide-react": "^0.546.0",
     "marked": "^15.0.12",
     "react": "19.2.5",

@@ -4,6 +4,9 @@ import { TabName, BaseExercise, WorkoutExercise, PlannedWorkoutsDict, CompletedS
 import { supabase, authViaTelegram } from '@/lib/supabase';
 import { subscribeFitnessRealtime } from '@/lib/realtime';
 import { sendCoachMessage, fetchCoachAdaptation, applyCoachAdaptation, dismissCoachAdaptation, deleteCoachMessage as apiDeleteCoachMessage, clearCoachChat as apiClearCoachChat } from '@/lib/botApi';
+import { db } from '@/lib/db';
+import { processSyncQueue } from '@/lib/syncManager';
+
 
 // Type-narrowing for supabase fluent builders that resolve to { data, error }.
 type SupaResult = { data?: unknown; error?: { message?: string } | null };
@@ -282,10 +285,165 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setExerciseDb(seeded);
   }, []);
 
+  // --- Helper to queue sync tasks ---
+  const queueMutation = useCallback(async (action: 'INSERT' | 'UPDATE' | 'DELETE' | 'UPSERT', tableName: string, payload: any) => {
+    await db.sync_queue.add({
+      action,
+      table_name: tableName,
+      payload,
+      created_at: Date.now(),
+    });
+    if (navigator.onLine) {
+      processSyncQueue();
+    }
+  }, []);
+
+  // --- Helper to execute mutation offline-first with rollback support ---
+  const executeMutation = useCallback(async (
+    tableName: string,
+    action: 'INSERT' | 'UPDATE' | 'DELETE' | 'UPSERT',
+    payload: any,
+    dexieWrite: () => Promise<any> | any,
+    rollback: () => void
+  ) => {
+    // 1. Write to Dexie optimistically
+    await dexieWrite();
+
+    // 2. If offline, queue and return
+    if (!navigator.onLine) {
+      await db.sync_queue.add({
+        action,
+        table_name: tableName,
+        payload,
+        created_at: Date.now(),
+      });
+      return;
+    }
+
+    // 3. If online, attempt to write to Supabase directly
+    try {
+      let query;
+      if (action === 'INSERT') {
+        query = supabase.from(tableName).insert(payload);
+      } else if (action === 'UPDATE') {
+        const { match, updates } = payload;
+        query = supabase.from(tableName).update(updates).match(match);
+      } else if (action === 'UPSERT') {
+        const { values, options } = payload;
+        query = supabase.from(tableName).upsert(values, options);
+      } else if (action === 'DELETE') {
+        query = supabase.from(tableName).delete().match(payload);
+      }
+
+      if (query) {
+        const { error } = await query;
+        if (error) {
+          console.error(`Supabase mutation error for table ${tableName}:`, error);
+          const isNetworkError =
+            error.message?.toLowerCase().includes('fetch') ||
+            error.message?.toLowerCase().includes('network') ||
+            error.status === 0 ||
+            error.code === 'PGRST102';
+
+          if (isNetworkError) {
+            // Queue mutation for later sync
+            await db.sync_queue.add({
+              action,
+              table_name: tableName,
+              payload,
+              created_at: Date.now(),
+            });
+          } else {
+            // Hard database constraint/auth error: rollback both Dexie and React
+            notifySyncError(`Ошибка сохранения: ${tableName}`);
+            rollback();
+            setTimeout(() => notifySyncError(null), 5000);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`Supabase mutation threw for table ${tableName}:`, err);
+      // Assume network error on throw (e.g. fetch failure), queue it
+      await db.sync_queue.add({
+        action,
+        table_name: tableName,
+        payload,
+        created_at: Date.now(),
+      });
+    }
+  }, []);
+
+
+  // --- Load data from Dexie (Offline-first) ---
+  const loadFromDexie = useCallback(async () => {
+    try {
+      const [exercises, wp, cs, ws, er, ua, bm] = await Promise.all([
+        db.exercises.toArray(),
+        db.workout_plans.toArray(),
+        db.completed_sets.toArray(),
+        db.workout_sessions.toArray(),
+        db.exercise_rests.toArray(),
+        db.user_achievements.toArray(),
+        db.body_metrics.toArray(),
+      ]);
+
+      if (exercises.length > 0) {
+        const exerciseData = exercises
+          .filter(e => !e.archived_at)
+          .map(r => ({
+            id: r.id, name: r.name, targetMuscleGroup: r.target_muscle_group ?? undefined,
+            defaultSets: r.default_sets, defaultReps: r.default_reps,
+            defaultRestTimeSeconds: r.default_rest_time_seconds,
+            defaultWeightKg: r.default_weight_kg != null ? Number(r.default_weight_kg) : undefined,
+          }));
+        setExerciseDb(exerciseData);
+      }
+
+      const plans: PlannedWorkoutsDict = {};
+      const sortedWp = wp.sort((a, b) => a.sort_order - b.sort_order);
+      for (const r of sortedWp) {
+        if (!plans[r.plan_date]) plans[r.plan_date] = [];
+        plans[r.plan_date].push({
+          id: r.exercise_id ?? '', name: r.name, targetMuscleGroup: r.target_muscle_group ?? undefined,
+          defaultSets: undefined, defaultReps: undefined, defaultRestTimeSeconds: undefined, defaultWeightKg: undefined,
+          workoutId: r.id, sets: r.sets, reps: r.reps, restTimeSeconds: r.rest_time_seconds ?? undefined,
+          weightKg: r.weight_kg != null ? Number(r.weight_kg) : undefined,
+        });
+      }
+      setPlannedWorkouts(plans);
+
+      const sets: CompletedSetsDict = {};
+      for (const r of cs) { sets[`${r.plan_date}_${r.workout_plan_id}_${r.set_index}`] = true; }
+      setCompletedSets(sets);
+
+      const durations: Record<string, number> = {};
+      for (const r of ws) { durations[r.plan_date] = (durations[r.plan_date] ?? 0) + r.duration_seconds; }
+      setDailyDurations(durations);
+
+      const rests: Record<string, number> = {};
+      for (const r of er) {
+        const d = r.recorded_at.slice(0, 10);
+        rests[`${d}_${r.workout_plan_id}`] = (rests[`${d}_${r.workout_plan_id}`] ?? 0) + r.actual_rest_seconds;
+      }
+      setActualExerciseRests(rests);
+
+      const ach: Record<string, number> = {};
+      for (const r of ua) { ach[r.achievement_type] = new Date(r.unlocked_at).getTime(); }
+      setUserStats(prev => ({ ...prev, achievements: ach }));
+
+      setBodyMetrics(bm.sort((a, b) => b.date.localeCompare(a.date)));
+    } catch (err) {
+      console.error('Failed to load from Dexie:', err);
+    }
+  }, []);
+
   // --- Load data from Supabase ---
   const loadFromSupabase = useCallback(async () => {
     try {
-      // Ensure session is active before querying (guards against race conditions)
+      // First try loading from Dexie immediately to show UI
+      await loadFromDexie();
+
+      // Ensure session is active before querying
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         console.warn('loadFromSupabase called without active session, skipping');
@@ -295,6 +453,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      // Sync offline queue if online
+      if (navigator.onLine) {
+        try {
+          await processSyncQueue();
+        } catch (syncErr) {
+          console.warn('Process sync queue failed during load:', syncErr);
+        }
+      }
 
       const since = format(subDays(new Date(), 60), 'yyyy-MM-dd');
       const [
@@ -343,6 +510,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }));
       setExerciseDb(exerciseData);
 
+      // Save to Dexie
+      if (exercises) {
+        await db.exercises.clear();
+        await db.exercises.bulkPut(
+          exercises.map((r: any) => ({
+            id: r.id,
+            name: r.name,
+            target_muscle_group: r.target_muscle_group ?? null,
+            default_sets: r.default_sets,
+            default_reps: r.default_reps,
+            default_rest_time_seconds: r.default_rest_time_seconds,
+            default_weight_kg: r.default_weight_kg != null ? Number(r.default_weight_kg) : null,
+            archived_at: r.archived_at ?? null,
+          }))
+        );
+      }
+
       if (exerciseData.length === 0) {
         // Double-check: verify session is active before seeding
         const { data: { session } } = await supabase.auth.getSession();
@@ -363,13 +547,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setPlannedWorkouts(plans);
 
+      if (wp) {
+        await db.workout_plans.clear();
+        await db.workout_plans.bulkPut(
+          wp.map((r: any) => ({
+            id: r.id,
+            exercise_id: r.exercise_id ?? null,
+            plan_date: r.plan_date,
+            name: r.name,
+            target_muscle_group: r.target_muscle_group ?? null,
+            sets: r.sets,
+            reps: r.reps,
+            rest_time_seconds: r.rest_time_seconds ?? null,
+            weight_kg: r.weight_kg != null ? Number(r.weight_kg) : null,
+            sort_order: r.sort_order,
+          }))
+        );
+      }
+
       const sets: CompletedSetsDict = {};
       for (const r of (cs ?? []) as CompletedSetRow[]) { sets[`${r.plan_date}_${r.workout_plan_id}_${r.set_index}`] = true; }
       setCompletedSets(sets);
 
+      if (cs) {
+        await db.completed_sets.clear();
+        await db.completed_sets.bulkPut(
+          cs.map((r: any) => ({
+            id: `${r.workout_plan_id}_${r.set_index}`,
+            workout_plan_id: r.workout_plan_id,
+            plan_date: r.plan_date,
+            set_index: r.set_index,
+          }))
+        );
+      }
+
       const durations: Record<string, number> = {};
       for (const r of (ws ?? []) as SessionRow[]) { durations[r.plan_date] = (durations[r.plan_date] ?? 0) + r.duration_seconds; }
       setDailyDurations(durations);
+
+      if (ws) {
+        await db.workout_sessions.clear();
+        await db.workout_sessions.bulkPut(
+          ws.map((r: any) => ({
+            id: r.id,
+            plan_date: r.plan_date,
+            duration_seconds: r.duration_seconds,
+          }))
+        );
+      }
 
       const rests: Record<string, number> = {};
       for (const r of (er ?? []) as ExerciseRestRow[]) {
@@ -378,11 +603,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setActualExerciseRests(rests);
 
+      if (er) {
+        await db.exercise_rests.clear();
+        await db.exercise_rests.bulkPut(
+          er.map((r: any) => ({
+            id: r.id,
+            workout_plan_id: r.workout_plan_id,
+            actual_rest_seconds: r.actual_rest_seconds,
+            recorded_at: r.recorded_at,
+          }))
+        );
+      }
+
       const ach: Record<string, number> = {};
       for (const r of (ua ?? []) as AchievementRow[]) { ach[r.achievement_type] = new Date(r.unlocked_at).getTime(); }
       setUserStats(prev => ({ ...prev, achievements: ach }));
 
+      if (ua) {
+        await db.user_achievements.clear();
+        await db.user_achievements.bulkPut(
+          ua.map((r: any) => ({
+            id: r.id,
+            achievement_type: r.achievement_type,
+            unlocked_at: r.unlocked_at,
+          }))
+        );
+      }
+
       setBodyMetrics((bm ?? []) as BodyMetric[]);
+
+      if (bm) {
+        await db.body_metrics.clear();
+        await db.body_metrics.bulkPut(
+          bm.map((r: any) => ({
+            id: r.id,
+            date: r.date,
+            weight_kg: r.weight_kg != null ? Number(r.weight_kg) : null,
+            chest_cm: r.chest_cm != null ? Number(r.chest_cm) : null,
+            bicep_r_cm: r.bicep_r_cm != null ? Number(r.bicep_r_cm) : null,
+            bicep_l_cm: r.bicep_l_cm != null ? Number(r.bicep_l_cm) : null,
+            waist_cm: r.waist_cm != null ? Number(r.waist_cm) : null,
+            hips_cm: r.hips_cm != null ? Number(r.hips_cm) : null,
+            thigh_r_cm: r.thigh_r_cm != null ? Number(r.thigh_r_cm) : null,
+            thigh_l_cm: r.thigh_l_cm != null ? Number(r.thigh_l_cm) : null,
+            notes: r.notes ?? null,
+          }))
+        );
+      }
 
       const msgData = (ccm ?? []).map((r: any) => ({
         id: r.id,
@@ -413,6 +680,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error('Failed to load from Supabase:', err);
       setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить данные');
+
       setLoading(false);
     }
   }, [seedDefaultExercises]);
@@ -529,10 +797,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const ev = payload.eventType;
         if (ev === 'INSERT' || ev === 'UPDATE') {
           const r = payload.new;
-          // Filter out archived exercises on read events — we don't want to
-          // accidentally show a deleted exercise back to the user.
           if (r.archived_at) {
             setExerciseDb(prev => prev.filter(e => e.id !== r.id));
+            db.exercises.delete(r.id);
             return;
           }
           const mapped: BaseExercise = {
@@ -547,12 +814,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setExerciseDb(prev => {
             const idx = prev.findIndex(e => e.id === r.id);
             if (idx === -1) return [...prev, mapped];
-            // Keep order, replace in place.
             return prev.map((e, i) => i === idx ? mapped : e);
+          });
+          db.exercises.put({
+            id: r.id,
+            name: r.name,
+            target_muscle_group: r.target_muscle_group ?? null,
+            default_sets: r.default_sets,
+            default_reps: r.default_reps,
+            default_rest_time_seconds: r.default_rest_time_seconds,
+            default_weight_kg: r.default_weight_kg != null ? Number(r.default_weight_kg) : null,
+            archived_at: r.archived_at ?? null,
           });
         } else if (ev === 'DELETE') {
           const old = payload.old;
-          if (old?.id) setExerciseDb(prev => prev.filter(e => e.id !== old.id));
+          if (old?.id) {
+            setExerciseDb(prev => prev.filter(e => e.id !== old.id));
+            db.exercises.delete(old.id);
+          }
         }
         bumpHistoryCache();
       },
@@ -581,12 +860,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const nextDay = idx === -1 ? [...day, mapped] : day.map((w, i) => i === idx ? mapped : w);
             return { ...prev, [r.plan_date]: nextDay };
           });
+          db.workout_plans.put({
+            id: r.id,
+            exercise_id: r.exercise_id ?? null,
+            plan_date: r.plan_date,
+            name: r.name,
+            target_muscle_group: r.target_muscle_group ?? null,
+            sets: r.sets,
+            reps: r.reps,
+            rest_time_seconds: r.rest_time_seconds ?? null,
+            weight_kg: r.weight_kg != null ? Number(r.weight_kg) : null,
+            sort_order: r.sort_order,
+          });
         } else if (ev === 'DELETE') {
           const old = payload.old;
           if (!old?.id) return;
           setPlannedWorkouts(prev => {
-            // We don't know plan_date in DELETE payload reliably (Supabase
-            // sends only the PK by default). Sweep all dates instead.
             const next: PlannedWorkoutsDict = {};
             for (const [date, list] of Object.entries(prev)) {
               const filtered = list.filter(w => w.workoutId !== old.id);
@@ -594,7 +883,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
             return next;
           });
-          // Also drop completed_sets that referenced this plan row.
           setCompletedSets(prev => {
             const next: CompletedSetsDict = {};
             for (const k of Object.keys(prev)) {
@@ -602,6 +890,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
             return next;
           });
+          db.workout_plans.delete(old.id);
+          db.completed_sets.where('workout_plan_id').equals(old.id).delete();
         }
         bumpHistoryCache();
       },
@@ -612,10 +902,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const r = payload.new;
           const key = `${r.plan_date}_${r.workout_plan_id}_${r.set_index}`;
           setCompletedSets(prev => prev[key] ? prev : { ...prev, [key]: true });
+          db.completed_sets.put({
+            id: key,
+            workout_plan_id: r.workout_plan_id,
+            plan_date: r.plan_date,
+            set_index: r.set_index,
+          });
         } else if (ev === 'DELETE') {
           const old = payload.old;
           if (!old?.workout_plan_id) return;
-          // DELETE payload usually carries only PK — match by workout_plan_id + set_index if present.
           setCompletedSets(prev => {
             const next: CompletedSetsDict = {};
             for (const k of Object.keys(prev)) {
@@ -626,12 +921,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
             return next;
           });
+          const key = `${old.plan_date}_${old.workout_plan_id}_${old.set_index}`;
+          db.completed_sets.delete(key);
         }
       },
 
-      // Workout sessions: each row is a finished session worth N seconds.
-      // We aggregate by date in `dailyDurations`. INSERTs add to the date
-      // bucket; deletes / sweeps are rare but we recover-by-reload.
       onWorkoutSessionChange: (payload) => {
         const ev = payload.eventType;
         if (ev === 'INSERT') {
@@ -640,15 +934,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ...prev,
             [r.plan_date]: (prev[r.plan_date] ?? 0) + (r.duration_seconds || 0),
           }));
-        } else if (ev === 'DELETE') {
-          // Without aggregating context, the safest move is a soft refresh:
-          // realtime DELETE payload doesn't carry duration_seconds, so we'd
-          // need to refetch. Keep this no-op for now — manual reload covers it.
+          db.workout_sessions.put({
+            id: r.id,
+            plan_date: r.plan_date,
+            duration_seconds: r.duration_seconds,
+          });
         }
       },
 
-      // Exercise rests: aggregated per (date, workout_plan_id) in
-      // `actualExerciseRests`. INSERTs are the only typical event.
       onExerciseRestChange: (payload) => {
         const ev = payload.eventType;
         if (ev === 'INSERT') {
@@ -659,6 +952,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ...prev,
             [key]: (prev[key] ?? 0) + (r.actual_rest_seconds || 0),
           }));
+          db.exercise_rests.put({
+            id: r.id,
+            workout_plan_id: r.workout_plan_id,
+            actual_rest_seconds: r.actual_rest_seconds,
+            recorded_at: r.recorded_at,
+          });
         }
       },
 
@@ -689,10 +988,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
             return next.sort((a, b) => b.date.localeCompare(a.date));
           });
+          db.body_metrics.put({
+            id: r.id,
+            date: r.date,
+            weight_kg: r.weight_kg != null ? Number(r.weight_kg) : null,
+            chest_cm: r.chest_cm != null ? Number(r.chest_cm) : null,
+            bicep_r_cm: r.bicep_r_cm != null ? Number(r.bicep_r_cm) : null,
+            bicep_l_cm: r.bicep_l_cm != null ? Number(r.bicep_l_cm) : null,
+            waist_cm: r.waist_cm != null ? Number(r.waist_cm) : null,
+            hips_cm: r.hips_cm != null ? Number(r.hips_cm) : null,
+            thigh_r_cm: r.thigh_r_cm != null ? Number(r.thigh_r_cm) : null,
+            thigh_l_cm: r.thigh_l_cm != null ? Number(r.thigh_l_cm) : null,
+            notes: r.notes ?? null,
+          });
         } else if (ev === 'DELETE') {
           const old = payload.old;
           if (old?.id) {
             setBodyMetrics(prev => prev.filter(m => m.id !== old.id));
+            db.body_metrics.delete(old.id);
           }
         }
       },
@@ -747,6 +1060,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       },
     });
+
 
     return unsubscribe;
   }, [loading, isTelegram]);
@@ -876,9 +1190,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       const rk = `${dateStr}_${restContext.workoutId}`;
       setActualExerciseRests(prev => ({ ...prev, [rk]: (prev[rk] ?? 0) + elapsed }));
-      supaSafe(supabase.from('exercise_rests').insert({ workout_plan_id: restContext.workoutId, actual_rest_seconds: elapsed }), 'exercise_rests insert');
+
+      const id = crypto.randomUUID();
+      const dbItem = {
+        id,
+        workout_plan_id: restContext.workoutId,
+        actual_rest_seconds: elapsed,
+        recorded_at: new Date().toISOString()
+      };
+      
+      executeMutation(
+        'exercise_rests',
+        'INSERT',
+        dbItem,
+        () => db.exercise_rests.put(dbItem),
+        () => {
+          setActualExerciseRests(prev => ({ ...prev, [rk]: Math.max(0, (prev[rk] ?? 0) - elapsed) }));
+          db.exercise_rests.delete(id);
+        }
+      );
     }
-  }, [restContext, restStartTime, restAccumulatedPause, isRestPaused, restPausedAt, selectedDate]);
+  }, [restContext, restStartTime, restAccumulatedPause, isRestPaused, restPausedAt, selectedDate, executeMutation]);
 
   const startRestTimer = useCallback((durationSeconds: number, context: RestContext) => {
     recordRest();
@@ -917,113 +1249,325 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [isRestPaused, restRemainingAtPause, restTimerEnd]);
 
-  // --- CRUD with Supabase sync + rollback (always syncs) ---
+  // --- CRUD with Dexie + Sync Queue ---
   const addExerciseToDb = useCallback((ex: Omit<BaseExercise, 'id'>) => {
-    const n = { ...ex, id: crypto.randomUUID() };
+    const id = crypto.randomUUID();
+    const n = { ...ex, id };
     setExerciseDb(prev => [...prev, n]);
-    supaSafe(
-      supabase.from('exercises').insert({ id: n.id, name: n.name, target_muscle_group: n.targetMuscleGroup ?? null, default_sets: n.defaultSets ?? 3, default_reps: n.defaultReps ?? 10, default_rest_time_seconds: n.defaultRestTimeSeconds ?? 90, default_weight_kg: n.defaultWeightKg ?? null }),
-      'exercises insert',
-      () => setExerciseDb(prev => prev.filter(e => e.id !== n.id)),
+
+    const dbItem = {
+      id: n.id,
+      name: n.name,
+      target_muscle_group: n.targetMuscleGroup ?? null,
+      default_sets: n.defaultSets ?? 3,
+      default_reps: n.defaultReps ?? 10,
+      default_rest_time_seconds: n.defaultRestTimeSeconds ?? 90,
+      default_weight_kg: n.defaultWeightKg ?? null,
+    };
+    
+    executeMutation(
+      'exercises',
+      'INSERT',
+      dbItem,
+      () => db.exercises.put(dbItem),
+      () => {
+        setExerciseDb(prev => prev.filter(e => e.id !== n.id));
+        db.exercises.delete(n.id);
+      }
     );
-  }, []);
+  }, [executeMutation]);
 
   const updateExerciseInDb = useCallback((id: string, ex: Omit<BaseExercise, 'id'>) => {
+    let original: BaseExercise | undefined;
     setExerciseDb(prev => {
-      const old = prev.find(e => e.id === id);
-      const rollback = () => { if (old) setExerciseDb(p => p.map(e => e.id === id ? old : e)); };
-      supaSafe(
-        supabase.from('exercises').update({ name: ex.name, target_muscle_group: ex.targetMuscleGroup ?? null, default_sets: ex.defaultSets ?? 3, default_reps: ex.defaultReps ?? 10, default_rest_time_seconds: ex.defaultRestTimeSeconds ?? 90, default_weight_kg: ex.defaultWeightKg ?? null }).eq('id', id),
-        'exercises update',
-        rollback,
-      );
+      original = prev.find(e => e.id === id);
       return prev.map(e => e.id === id ? { ...ex, id } : e);
     });
-  }, []);
+
+    const dbItem = {
+      id,
+      name: ex.name,
+      target_muscle_group: ex.targetMuscleGroup ?? null,
+      default_sets: ex.defaultSets ?? 3,
+      default_reps: ex.defaultReps ?? 10,
+      default_rest_time_seconds: ex.defaultRestTimeSeconds ?? 90,
+      default_weight_kg: ex.defaultWeightKg ?? null,
+    };
+
+    executeMutation(
+      'exercises',
+      'UPDATE',
+      {
+        match: { id },
+        updates: {
+          name: ex.name,
+          target_muscle_group: ex.targetMuscleGroup ?? null,
+          default_sets: ex.defaultSets ?? 3,
+          default_reps: ex.defaultReps ?? 10,
+          default_rest_time_seconds: ex.defaultRestTimeSeconds ?? 90,
+          default_weight_kg: ex.defaultWeightKg ?? null,
+        }
+      },
+      () => db.exercises.put(dbItem),
+      () => {
+        if (original) {
+          setExerciseDb(prev => prev.map(e => e.id === id ? original! : e));
+          db.exercises.put({
+            id: original.id,
+            name: original.name,
+            target_muscle_group: original.targetMuscleGroup ?? null,
+            default_sets: original.defaultSets,
+            default_reps: original.defaultReps,
+            default_rest_time_seconds: original.defaultRestTimeSeconds,
+            default_weight_kg: original.defaultWeightKg ?? null,
+          });
+        }
+      }
+    );
+  }, [executeMutation]);
 
   const deleteExerciseFromDb = useCallback((id: string) => {
-    // Soft-delete: mark as archived instead of hard-deleting, so that
-    // workout_plans.exercise_id references and exercise history remain intact.
+    let original: BaseExercise | undefined;
     setExerciseDb(prev => {
-      const removed = prev.find(e => e.id === id);
-      const next = prev.filter(e => e.id !== id);
-      if (removed) {
-        supaSafe(
-          supabase.from('exercises').update({ archived_at: new Date().toISOString() }).eq('id', id),
-          'exercises archive',
-          () => setExerciseDb(p => [...p, removed]),
-        );
-      }
-      return next;
+      original = prev.find(e => e.id === id);
+      return prev.filter(e => e.id !== id);
     });
-  }, []);
+
+    const archived_at = new Date().toISOString();
+
+    executeMutation(
+      'exercises',
+      'UPDATE',
+      {
+        match: { id },
+        updates: { archived_at }
+      },
+      () => db.exercises.update(id, { archived_at }),
+      () => {
+        if (original) {
+          setExerciseDb(prev => [...prev, original!]);
+          db.exercises.update(id, { archived_at: null });
+        }
+      }
+    );
+  }, [executeMutation]);
 
   const addExerciseToPlan = useCallback((dateStr: string, exercise: BaseExercise, sets: number, reps: number, rt?: number) => {
     const wid = crypto.randomUUID();
     const weightKg = exercise.defaultWeightKg;
     const newItem = { ...exercise, workoutId: wid, sets, reps, restTimeSeconds: rt, weightKg };
+    
+    const dbItem = {
+      id: wid,
+      exercise_id: exercise.id,
+      plan_date: dateStr,
+      name: exercise.name,
+      target_muscle_group: exercise.targetMuscleGroup ?? null,
+      sets,
+      reps,
+      rest_time_seconds: rt ?? null,
+      weight_kg: weightKg ?? null,
+      sort_order: 0
+    };
+
     setPlannedWorkouts(prev => {
       const today = prev[dateStr] ?? [];
-      const newSortOrder = today.length;
-      supaSafe(
-        supabase.from('workout_plans').insert({ id: wid, plan_date: dateStr, exercise_id: exercise.id, name: exercise.name, target_muscle_group: exercise.targetMuscleGroup ?? null, sets, reps, rest_time_seconds: rt ?? null, weight_kg: weightKg ?? null, sort_order: newSortOrder }),
-        'workout_plans insert',
-        () => setPlannedWorkouts(p => ({ ...p, [dateStr]: (p[dateStr] ?? []).filter(e => e.workoutId !== wid) })),
-      );
+      dbItem.sort_order = today.length;
       return { ...prev, [dateStr]: [...today, newItem] };
     });
-    // Plan changed → exercise history caches are now stale.
+
+    executeMutation(
+      'workout_plans',
+      'INSERT',
+      dbItem,
+      () => db.workout_plans.put(dbItem),
+      () => {
+        setPlannedWorkouts(prev => ({
+          ...prev,
+          [dateStr]: (prev[dateStr] ?? []).filter(e => e.workoutId !== wid)
+        }));
+        db.workout_plans.delete(wid);
+      }
+    );
     bumpHistoryCache();
-  }, []);
+  }, [executeMutation]);
 
   const updatePlanExercise = useCallback((dateStr: string, wid: string, updates: Partial<Pick<WorkoutExercise, 'sets' | 'reps' | 'restTimeSeconds' | 'weightKg'>>) => {
-    setPlannedWorkouts(prev => ({
-      ...prev,
-      [dateStr]: (prev[dateStr] ?? []).map(ex => ex.workoutId === wid ? { ...ex, ...updates } : ex),
-    }));
-    const sbUpdates: Record<string, unknown> = {};
-    if (updates.sets !== undefined) sbUpdates.sets = updates.sets;
-    if (updates.reps !== undefined) sbUpdates.reps = updates.reps;
-    if (updates.restTimeSeconds !== undefined) sbUpdates.rest_time_seconds = updates.restTimeSeconds ?? null;
-    if (updates.weightKg !== undefined) sbUpdates.weight_kg = updates.weightKg ?? null;
-    supaSafe(supabase.from('workout_plans').update(sbUpdates).eq('id', wid), 'workout_plans update');
+    let original: WorkoutExercise | undefined;
+    setPlannedWorkouts(prev => {
+      const today = prev[dateStr] ?? [];
+      original = today.find(e => e.workoutId === wid);
+      return {
+        ...prev,
+        [dateStr]: today.map(ex => ex.workoutId === wid ? { ...ex, ...updates } : ex),
+      };
+    });
+
+    const localUpdates: any = {};
+    const sbUpdates: any = {};
+    if (updates.sets !== undefined) { localUpdates.sets = updates.sets; sbUpdates.sets = updates.sets; }
+    if (updates.reps !== undefined) { localUpdates.reps = updates.reps; sbUpdates.reps = updates.reps; }
+    if (updates.restTimeSeconds !== undefined) { localUpdates.rest_time_seconds = updates.restTimeSeconds ?? null; sbUpdates.rest_time_seconds = updates.restTimeSeconds ?? null; }
+    if (updates.weightKg !== undefined) { localUpdates.weight_kg = updates.weightKg ?? null; sbUpdates.weight_kg = updates.weightKg ?? null; }
+
+    executeMutation(
+      'workout_plans',
+      'UPDATE',
+      {
+        match: { id: wid },
+        updates: sbUpdates
+      },
+      () => db.workout_plans.update(wid, localUpdates),
+      () => {
+        if (original) {
+          setPlannedWorkouts(prev => ({
+            ...prev,
+            [dateStr]: (prev[dateStr] ?? []).map(ex => ex.workoutId === wid ? original! : ex),
+          }));
+          const origLocal: any = {
+            sets: original.sets,
+            reps: original.reps,
+            rest_time_seconds: original.restTimeSeconds ?? null,
+            weight_kg: original.weightKg ?? null,
+          };
+          db.workout_plans.update(wid, origLocal);
+        }
+      }
+    );
     bumpHistoryCache();
-  }, []);
+  }, [executeMutation]);
 
   const removeExerciseFromPlan = useCallback((dateStr: string, wid: string) => {
-    setPlannedWorkouts(prev => ({ ...prev, [dateStr]: (prev[dateStr] ?? []).filter(e => e.workoutId !== wid) }));
-    setCompletedSets(prev => { const n = { ...prev }; for (const k of Object.keys(n)) { if (k.includes(wid)) delete n[k]; } return n; });
-    supaSafe(supabase.from('workout_plans').delete().eq('id', wid), 'workout_plans delete');
-    supaSafe(supabase.from('completed_sets').delete().eq('workout_plan_id', wid), 'completed_sets delete');
+    let originalPlan: WorkoutExercise | undefined;
+    let originalCompleted: string[] = [];
+
+    setPlannedWorkouts(prev => {
+      originalPlan = (prev[dateStr] ?? []).find(e => e.workoutId === wid);
+      return { ...prev, [dateStr]: (prev[dateStr] ?? []).filter(e => e.workoutId !== wid) };
+    });
+
+    setCompletedSets(prev => {
+      const n = { ...prev };
+      for (const k of Object.keys(n)) {
+        if (k.includes(wid)) {
+          originalCompleted.push(k);
+          delete n[k];
+        }
+      }
+      return n;
+    });
+
+    executeMutation(
+      'workout_plans',
+      'DELETE',
+      { id: wid },
+      async () => {
+        await db.workout_plans.delete(wid);
+        await db.completed_sets.where('workout_plan_id').equals(wid).delete();
+      },
+      async () => {
+        if (originalPlan) {
+          setPlannedWorkouts(prev => ({
+            ...prev,
+            [dateStr]: [...(prev[dateStr] ?? []), originalPlan!]
+          }));
+          await db.workout_plans.put({
+            id: wid,
+            exercise_id: originalPlan.id,
+            plan_date: dateStr,
+            name: originalPlan.name,
+            target_muscle_group: originalPlan.targetMuscleGroup ?? null,
+            sets: originalPlan.sets,
+            reps: originalPlan.reps,
+            rest_time_seconds: originalPlan.restTimeSeconds ?? null,
+            weight_kg: originalPlan.weightKg ?? null,
+            sort_order: 0
+          });
+        }
+        if (originalCompleted.length > 0) {
+          setCompletedSets(prev => {
+            const next = { ...prev };
+            for (const k of originalCompleted) next[k] = true;
+            return next;
+          });
+          for (const k of originalCompleted) {
+            const parts = k.split('_'); // planDate, workoutPlanId, setIndex
+            await db.completed_sets.put({
+              id: k,
+              workout_plan_id: wid,
+              plan_date: parts[0],
+              set_index: Number(parts[2])
+            });
+          }
+        }
+      }
+    );
     bumpHistoryCache();
-  }, []);
+  }, [executeMutation]);
 
   const toggleSetCompletion = useCallback((dateStr: string, wid: string, si: number, done: boolean) => {
     if (done && !workoutStartTime && !workoutAccumulatedMs) startWorkoutTimer();
     const key = `${dateStr}_${wid}_${si}`;
+    
     if (!done) {
       setCompletedSets(prev => { const n = { ...prev }; delete n[key]; return n; });
-      supaSafe(supabase.from('completed_sets').delete().eq('workout_plan_id', wid).eq('set_index', si), 'completed_sets delete');
+      executeMutation(
+        'completed_sets',
+        'DELETE',
+        { workout_plan_id: wid, set_index: si },
+        () => db.completed_sets.delete(key),
+        () => {
+          setCompletedSets(prev => ({ ...prev, [key]: true }));
+          db.completed_sets.put({ id: key, workout_plan_id: wid, plan_date: dateStr, set_index: si });
+        }
+      );
     } else {
       setCompletedSets(prev => ({ ...prev, [key]: true }));
-      supaSafe(
-        supabase.from('completed_sets').upsert({ workout_plan_id: wid, plan_date: dateStr, set_index: si }, { onConflict: 'user_id, workout_plan_id, set_index' }),
-        'completed_sets upsert',
-        () => setCompletedSets(prev => { const n = { ...prev }; delete n[key]; return n; }),
+      const dbItem = {
+        id: key,
+        workout_plan_id: wid,
+        plan_date: dateStr,
+        set_index: si
+      };
+      executeMutation(
+        'completed_sets',
+        'UPSERT',
+        {
+          values: { workout_plan_id: wid, plan_date: dateStr, set_index: si },
+          options: { onConflict: 'user_id, workout_plan_id, set_index' }
+        },
+        () => db.completed_sets.put(dbItem),
+        () => {
+          setCompletedSets(prev => { const n = { ...prev }; delete n[key]; return n; });
+          db.completed_sets.delete(key);
+        }
       );
     }
-  }, [workoutStartTime, workoutAccumulatedMs, startWorkoutTimer]);
+  }, [workoutStartTime, workoutAccumulatedMs, startWorkoutTimer, executeMutation]);
 
   const finishWorkout = useCallback(() => {
     const elapsedMs = workoutAccumulatedMs + (workoutStartTime && !isWorkoutPaused ? Date.now() - workoutStartTime : 0);
     const secs = Math.floor(elapsedMs / 1000);
     if (secs > 0) {
       const ds = format(selectedDate, 'yyyy-MM-dd');
+      const id = crypto.randomUUID();
       setDailyDurations(prev => ({ ...prev, [ds]: (prev[ds] ?? 0) + secs }));
-      supaSafe(supabase.from('workout_sessions').insert({ plan_date: ds, duration_seconds: secs }), 'workout_sessions insert');
+      
+      const dbItem = { id, plan_date: ds, duration_seconds: secs };
+      
+      executeMutation(
+        'workout_sessions',
+        'INSERT',
+        dbItem,
+        () => db.workout_sessions.put(dbItem),
+        () => {
+          setDailyDurations(prev => ({ ...prev, [ds]: Math.max(0, (prev[ds] ?? 0) - secs) }));
+          db.workout_sessions.delete(id);
+        }
+      );
     }
     resetWorkoutTimer(); clearRestTimer();
-  }, [workoutAccumulatedMs, workoutStartTime, isWorkoutPaused, selectedDate, resetWorkoutTimer, clearRestTimer]);
+  }, [workoutAccumulatedMs, workoutStartTime, isWorkoutPaused, selectedDate, resetWorkoutTimer, clearRestTimer, executeMutation]);
 
   const saveBodyMetrics = useCallback(async (data: Partial<BodyMetric>) => {
     if (!data.date) return;
@@ -1065,24 +1609,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return next.sort((a, b) => b.date.localeCompare(a.date));
     });
 
-    await supaSafe(
-      supabase.from('body_metrics').upsert({
-        id,
-        date: data.date,
-        weight_kg,
-        chest_cm,
-        bicep_r_cm,
-        bicep_l_cm,
-        waist_cm,
-        hips_cm,
-        thigh_r_cm,
-        thigh_l_cm,
-        notes,
-      }, { onConflict: 'user_id, date' }),
-      'body_metrics upsert',
+    executeMutation(
+      'body_metrics',
+      'UPSERT',
+      {
+        values: {
+          id,
+          date: data.date,
+          weight_kg,
+          chest_cm,
+          bicep_r_cm,
+          bicep_l_cm,
+          waist_cm,
+          hips_cm,
+          thigh_r_cm,
+          thigh_l_cm,
+          notes,
+        },
+        options: { onConflict: 'user_id, date' }
+      },
+      () => db.body_metrics.put(updatedItem),
       () => setBodyMetrics(originalState)
     );
-  }, []);
+  }, [executeMutation]);
+
+
 
   const sendCoachMessageAction = useCallback(async (messageText: string) => {
     const tempId = `temp-${Date.now()}`;
