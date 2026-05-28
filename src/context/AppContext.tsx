@@ -7,6 +7,16 @@ import { sendCoachMessage, fetchCoachAdaptation, applyCoachAdaptation, dismissCo
 import { db, type LocalBodyMetric } from '@/lib/db';
 import { processSyncQueue } from '@/lib/syncManager';
 
+const generateUUID = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
 
 // Type-narrowing for supabase fluent builders that resolve to { data, error }.
 type SupaResult = { data?: unknown; error?: { message?: string } | null };
@@ -267,7 +277,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const seedDefaultExercises = useCallback(async () => {
     const seeded: BaseExercise[] = [];
     for (const ex of defaultExercises) {
-      const id = crypto.randomUUID();
+      const id = generateUUID();
       seeded.push({ ...ex, id });
       supaSafe(
         supabase.from('exercises').insert({
@@ -798,6 +808,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const ev = payload.eventType;
         if (ev === 'INSERT' || ev === 'UPDATE') {
           const r = payload.new;
+          if (!r || !r.id) return;
           if (r.archived_at) {
             setExerciseDb(prev => prev.filter(e => e.id !== r.id));
             db.exercises.delete(r.id);
@@ -841,6 +852,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const ev = payload.eventType;
         if (ev === 'INSERT' || ev === 'UPDATE') {
           const r = payload.new;
+          if (!r || !r.id) return;
           const mapped: WorkoutExercise = {
             id: r.exercise_id ?? '',
             name: r.name,
@@ -901,6 +913,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const ev = payload.eventType;
         if (ev === 'INSERT' || ev === 'UPDATE') {
           const r = payload.new;
+          if (!r || !r.plan_date || !r.workout_plan_id || r.set_index == null) return;
           const key = `${r.plan_date}_${r.workout_plan_id}_${r.set_index}`;
           setCompletedSets(prev => prev[key] ? prev : { ...prev, [key]: true });
           db.completed_sets.put({
@@ -931,6 +944,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const ev = payload.eventType;
         if (ev === 'INSERT') {
           const r = payload.new;
+          if (!r || !r.id) return;
           if (!localSessionIds.current.has(r.id)) {
             setDailyDurations(prev => ({
               ...prev,
@@ -951,6 +965,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const ev = payload.eventType;
         if (ev === 'INSERT') {
           const r = payload.new;
+          if (!r || !r.id) return;
           const recorded = (r.recorded_at || '').slice(0, 10) || format(new Date(), 'yyyy-MM-dd');
           const key = `${recorded}_${r.workout_plan_id}`;
           setActualExerciseRests(prev => ({
@@ -970,6 +985,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const ev = payload.eventType;
         if (ev === 'INSERT' || ev === 'UPDATE') {
           const r = payload.new;
+          if (!r || !r.id) return;
           const mapped: BodyMetric = {
             id: r.id,
             date: r.date,
@@ -1196,7 +1212,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const rk = `${dateStr}_${restContext.workoutId}`;
       setActualExerciseRests(prev => ({ ...prev, [rk]: (prev[rk] ?? 0) + elapsed }));
 
-      const id = crypto.randomUUID();
+      const id = generateUUID();
       const dbItem = {
         id,
         workout_plan_id: restContext.workoutId,
@@ -1256,7 +1272,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // --- CRUD with Dexie + Sync Queue ---
   const addExerciseToDb = useCallback((ex: Omit<BaseExercise, 'id'>) => {
-    const id = crypto.randomUUID();
+    const id = generateUUID();
     const n = { ...ex, id };
     setExerciseDb(prev => [...prev, n]);
 
@@ -1358,7 +1374,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [executeMutation]);
 
   const addExerciseToPlan = useCallback((dateStr: string, exercise: BaseExercise, sets: number, reps: number, rt?: number) => {
-    const wid = crypto.randomUUID();
+    const wid = generateUUID();
     const weightKg = exercise.defaultWeightKg;
     const newItem = { ...exercise, workoutId: wid, sets, reps, restTimeSeconds: rt, weightKg };
     
@@ -1557,7 +1573,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const secs = Math.floor(elapsedMs / 1000);
     if (secs > 0) {
       const ds = format(selectedDate, 'yyyy-MM-dd');
-      const id = crypto.randomUUID();
+      const id = generateUUID();
       localSessionIds.current.add(id);
       setDailyDurations(prev => ({ ...prev, [ds]: (prev[ds] ?? 0) + secs }));
       
@@ -1589,7 +1605,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const thigh_l_cm = data.thigh_l_cm !== undefined ? data.thigh_l_cm : null;
     const notes = data.notes !== undefined ? data.notes : null;
 
-    const id = data.id || crypto.randomUUID();
+    const id = data.id || generateUUID();
     const updatedItem: BodyMetric = {
       id,
       date: data.date,
