@@ -1197,15 +1197,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // Persist newly unlocked achievements. We read from the ref which was
     // populated by the last updater invocation (the one React actually committed).
-    for (const [type, time] of Object.entries(newlyUnlockedRef.current)) {
-      supaSafe(
-        supabase.from('user_achievements').upsert(
-          { achievement_type: type, unlocked_at: new Date(time).toISOString() },
-          { onConflict: 'user_id, achievement_type' },
-        ),
-        `achievement ${type}`,
-      );
-    }
+    const persistAchievements = async () => {
+      const unlocked = newlyUnlockedRef.current;
+      if (Object.keys(unlocked).length === 0) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      for (const [type, time] of Object.entries(unlocked)) {
+        const dbId = generateUUID();
+        const dbItem = {
+          id: dbId,
+          achievement_type: type,
+          unlocked_at: new Date(time).toISOString(),
+        };
+
+        await supaSafe(
+          supabase.from('user_achievements').upsert(
+            { ...dbItem, user_id: user.id },
+            { onConflict: 'user_id, achievement_type' },
+          ),
+          `achievement ${type}`,
+        );
+
+        await db.user_achievements.put(dbItem);
+      }
+    };
+    persistAchievements();
   }, [completedSets, dailyDurations]);
 
   // --- Timer logic ---

@@ -507,6 +507,18 @@ function PlanField({
   placeholder?: string;
   step?: number;
 }) {
+  const [localVal, setLocalVal] = useState<string>(value != null ? value.toString() : '');
+
+  useEffect(() => {
+    setLocalVal(value != null ? value.toString() : '');
+  }, [value]);
+
+  const handleBlur = () => {
+    if (localVal === '' || isNaN(Number(localVal)) || Number(localVal) < (step < 1 ? 0 : 1)) {
+      setLocalVal(value != null ? value.toString() : '');
+    }
+  };
+
   return (
     <div className="flex items-center gap-1">
       <label className="text-[10px] text-slate-500">{label}</label>
@@ -515,12 +527,16 @@ function PlanField({
         step={step}
         min={step < 1 ? 0 : 1}
         placeholder={placeholder}
-        value={value}
+        value={localVal}
+        onBlur={handleBlur}
         onChange={(e) => {
           const raw = e.target.value;
-          if (raw === '') return onChange('');
+          setLocalVal(raw);
+          if (raw === '') return;
           const n = step < 1 ? Number(raw) : parseInt(raw);
-          if (!isNaN(n) && n >= 0) onChange(n);
+          if (!isNaN(n) && n >= (step < 1 ? 0 : 1)) {
+            onChange(n);
+          }
         }}
         className="w-14 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-purple-300 focus:outline-none focus:border-purple-500 placeholder:text-slate-600 tabular-nums"
       />
