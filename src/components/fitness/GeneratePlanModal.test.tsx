@@ -1,13 +1,13 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { GeneratePlanModal } from './GeneratePlanModal';
-import { generatePlan, applyPlan, getPreGenerateCheck } from '@/lib/botApi';
+import { generatePlan, applyPlan, checkPreGenerate } from '@/lib/botApi';
 import React from 'react';
 
 vi.mock('@/lib/botApi', () => ({
   generatePlan: vi.fn(),
   applyPlan: vi.fn(),
-  getPreGenerateCheck: vi.fn(),
+  checkPreGenerate: vi.fn(),
 }));
 
 describe('GeneratePlanModal Component', () => {
@@ -59,7 +59,7 @@ describe('GeneratePlanModal Component', () => {
       summary: 'Тестовый сплит на 2 дня'
     };
 
-    vi.mocked(getPreGenerateCheck).mockResolvedValueOnce({ ok: true, question: 'Вопрос ИИ' });
+    vi.mocked(checkPreGenerate).mockResolvedValueOnce({ question: 'Вопрос ИИ' });
     vi.mocked(generatePlan).mockResolvedValueOnce(mockPlanResponse);
 
     render(<GeneratePlanModal onClose={mockOnClose} onSuccess={mockOnSuccess} />);
@@ -107,7 +107,7 @@ describe('GeneratePlanModal Component', () => {
       summary: 'Тестовый сплит на 1 день'
     };
 
-    vi.mocked(getPreGenerateCheck).mockResolvedValueOnce({ ok: true, question: 'Вопрос ИИ' });
+    vi.mocked(checkPreGenerate).mockResolvedValueOnce({ question: 'Вопрос ИИ' });
     vi.mocked(generatePlan).mockResolvedValueOnce(mockPlanResponse);
     vi.mocked(applyPlan).mockResolvedValueOnce({ ok: true, exercises_created: 1 });
 
@@ -132,7 +132,7 @@ describe('GeneratePlanModal Component', () => {
   });
 
   test('handles error state if generator endpoint fails', async () => {
-    vi.mocked(getPreGenerateCheck).mockResolvedValueOnce({ ok: true, question: 'Вопрос ИИ' });
+    vi.mocked(checkPreGenerate).mockResolvedValueOnce({ question: 'Вопрос ИИ' });
     vi.mocked(generatePlan).mockRejectedValueOnce(new Error('API Error'));
 
     render(<GeneratePlanModal onClose={mockOnClose} onSuccess={mockOnSuccess} />);
@@ -149,7 +149,7 @@ describe('GeneratePlanModal Component', () => {
   });
 
   test('handles error state if generator endpoint returns empty plan', async () => {
-    vi.mocked(getPreGenerateCheck).mockResolvedValueOnce({ ok: true, question: 'Вопрос ИИ' });
+    vi.mocked(checkPreGenerate).mockResolvedValueOnce({ question: 'Вопрос ИИ' });
     vi.mocked(generatePlan).mockResolvedValueOnce({ plan: {}, summary: '' });
 
     render(<GeneratePlanModal onClose={mockOnClose} onSuccess={mockOnSuccess} />);
@@ -175,7 +175,7 @@ describe('GeneratePlanModal Component', () => {
       summary: 'Тестовый сплит на 1 день'
     };
 
-    vi.mocked(getPreGenerateCheck).mockResolvedValueOnce({ ok: true, question: 'Вопрос ИИ' });
+    vi.mocked(checkPreGenerate).mockResolvedValueOnce({ question: 'Вопрос ИИ' });
     vi.mocked(generatePlan).mockResolvedValueOnce(mockPlanResponse);
     vi.mocked(applyPlan).mockResolvedValueOnce({ ok: false, exercises_created: 0 });
 

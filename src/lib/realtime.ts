@@ -61,6 +61,8 @@ export interface WorkoutSessionRow {
   plan_date: string;
   duration_seconds: number;
   finished_at: string;
+  rating?: number | null;
+  notes?: string | null;
 }
 
 export interface ExerciseRestRow {
