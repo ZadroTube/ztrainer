@@ -34,8 +34,13 @@ function SetDots({ total, done }: { total: number; done: number }) {
   );
 }
 
-const ExerciseCard: FC<{ exercise: WorkoutExercise; dateStr: string; isDiaryMode: boolean }> = ({
-  exercise, dateStr, isDiaryMode,
+const ExerciseCard: FC<{
+  exercise: WorkoutExercise;
+  dateStr: string;
+  isDiaryMode: boolean;
+  onEdit?: () => void;
+}> = ({
+  exercise, dateStr, isDiaryMode, onEdit,
 }) => {
   const { completedSets, toggleSetCompletion, actualExerciseRests, removeExerciseFromPlan, updatePlanExercise } =
     useWorkoutData();
@@ -54,7 +59,6 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise; dateStr: string; isDiaryMode
   // Auto-collapse completed exercises in plan mode; always expanded in diary view.
   const [expanded, setExpanded] = useState(isDiaryMode ? true : !allComplete);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
 
   const handleSetToggle = (setIdx: number) => {
     if (isDiaryMode) return;
@@ -137,9 +141,9 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise; dateStr: string; isDiaryMode
         </div>
 
         <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-          {!isDiaryMode && (
+          {!isDiaryMode && onEdit && (
             <button
-              onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
               className="active:scale-90 p-1.5 rounded-lg transition-all text-slate-500 hover:text-cyan-400 hover:bg-cyan-400/10"
               title="Редактировать"
             >
@@ -261,15 +265,6 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise; dateStr: string; isDiaryMode
           </div>
         </div>
       )}
-      {isEditing && (
-        <EditWorkoutExerciseModal
-          exercise={exercise}
-          onClose={() => setIsEditing(false)}
-          onSave={(updates) => {
-            updatePlanExercise(dateStr, exercise.workoutId, updates);
-          }}
-        />
-      )}
     </div>
   );
 };
@@ -284,10 +279,11 @@ function formatDurationSeconds(totalSeconds: number) {
 
 export function WorkoutTracker({ onGoToPlan }: { onGoToPlan?: () => void } = {}) {
   const { selectedDate, viewMode } = useUIContext();
-  const { plannedWorkouts, completedSets, dailyDurations, finishWorkout } = useWorkoutData();
+  const { plannedWorkouts, completedSets, dailyDurations, finishWorkout, updatePlanExercise } = useWorkoutData();
   const { workoutStartTime, workoutAccumulatedMs } = useTimerContext();
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
   const [showFinishModal, setShowFinishModal] = useState(false);
+  const [editingExercise, setEditingExercise] = useState<WorkoutExercise | null>(null);
 
   const todaysPlan = plannedWorkouts[dateStr] || [];
   const isDayFinished = !!dailyDurations[dateStr];
@@ -438,7 +434,13 @@ export function WorkoutTracker({ onGoToPlan }: { onGoToPlan?: () => void } = {})
       )}
 
       {filteredPlan.map((ex) => (
-        <ExerciseCard key={ex.workoutId} exercise={ex} dateStr={dateStr} isDiaryMode={false} />
+        <ExerciseCard
+          key={ex.workoutId}
+          exercise={ex}
+          dateStr={dateStr}
+          isDiaryMode={false}
+          onEdit={() => setEditingExercise(ex)}
+        />
       ))}
 
       {/* Single sticky finish button when a session is in flight */}
@@ -459,6 +461,16 @@ export function WorkoutTracker({ onGoToPlan }: { onGoToPlan?: () => void } = {})
           onSave={(rating, notes) => {
             finishWorkout(rating, notes);
             setShowFinishModal(false);
+          }}
+        />
+      )}
+
+      {editingExercise && (
+        <EditWorkoutExerciseModal
+          exercise={editingExercise}
+          onClose={() => setEditingExercise(null)}
+          onSave={(updates) => {
+            updatePlanExercise(dateStr, editingExercise.workoutId, updates);
           }}
         />
       )}
