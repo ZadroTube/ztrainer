@@ -2,10 +2,12 @@ import { useState, type FC } from 'react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useWorkoutData, useTimerContext, useUIContext } from '@/context/AppContext';
-import { Check, ChevronDown, ChevronUp, Play, Clock, StopCircle, Trash2 } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Play, Clock, StopCircle, Trash2, Edit2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { WorkoutExercise } from '@/types';
 import { InlineRestTimer } from './InlineRestTimer';
+import { EditWorkoutExerciseModal } from './EditWorkoutExerciseModal';
+import { FinishWorkoutModal } from './FinishWorkoutModal';
 
 /**
  * Compact dot-progress for an exercise:
@@ -35,7 +37,7 @@ function SetDots({ total, done }: { total: number; done: number }) {
 const ExerciseCard: FC<{ exercise: WorkoutExercise; dateStr: string; isDiaryMode: boolean }> = ({
   exercise, dateStr, isDiaryMode,
 }) => {
-  const { completedSets, toggleSetCompletion, actualExerciseRests, removeExerciseFromPlan } =
+  const { completedSets, toggleSetCompletion, actualExerciseRests, removeExerciseFromPlan, updatePlanExercise } =
     useWorkoutData();
   const { startRestTimer, restContext } = useTimerContext();
 
@@ -43,14 +45,16 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise; dateStr: string; isDiaryMode
     !!completedSets[`${dateStr}_${exercise.workoutId}_${setIdx}`];
 
   let completedCount = 0;
-  for (let i = 0; i < exercise.sets; i++) {
+  const totalSets = exercise.sets || 1;
+  for (let i = 0; i < totalSets; i++) {
     if (isSetCompleted(i)) completedCount++;
   }
-  const allComplete = completedCount === exercise.sets;
+  const allComplete = completedCount === totalSets;
 
   // Auto-collapse completed exercises in plan mode; always expanded in diary view.
   const [expanded, setExpanded] = useState(isDiaryMode ? true : !allComplete);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
   const handleSetToggle = (setIdx: number) => {
     if (isDiaryMode) return;
@@ -60,7 +64,6 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise; dateStr: string; isDiaryMode
     toggleSetCompletion(dateStr, exercise.workoutId, setIdx, willComplete);
 
     if (willComplete) {
-      const totalSets = exercise.sets;
       let completedAfter = 1;
       for (let i = 0; i < totalSets; i++) {
         if (i !== setIdx && isSetCompleted(i)) completedAfter++;
@@ -84,7 +87,7 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise; dateStr: string; isDiaryMode
   // Highlight the next pending set so the user knows where to look.
   const nextPendingIdx = (() => {
     if (isDiaryMode || allComplete) return -1;
-    for (let i = 0; i < exercise.sets; i++) {
+    for (let i = 0; i < totalSets; i++) {
       if (!isSetCompleted(i)) return i;
     }
     return -1;
@@ -119,9 +122,9 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise; dateStr: string; isDiaryMode
             {!isDiaryMode ? (
               <>
                 {exercise.targetMuscleGroup && <span className="opacity-40">·</span>}
-                <SetDots total={exercise.sets} done={completedCount} />
+                <SetDots total={totalSets} done={completedCount} />
                 <span className="tabular-nums">
-                  {completedCount}/{exercise.sets}
+                  {completedCount}/{totalSets}
                 </span>
               </>
             ) : (
@@ -134,6 +137,15 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise; dateStr: string; isDiaryMode
         </div>
 
         <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+          {!isDiaryMode && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+              className="active:scale-90 p-1.5 rounded-lg transition-all text-slate-500 hover:text-cyan-400 hover:bg-cyan-400/10"
+              title="Редактировать"
+            >
+              <Edit2 className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -165,7 +177,7 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise; dateStr: string; isDiaryMode
 
       {expanded && (
         <div className="px-4 pb-4 bg-transparent space-y-2 animate-in slide-in-from-top-2 fade-in">
-          {Array.from({ length: exercise.sets }).map((_, setIdx) => {
+          {Array.from({ length: totalSets }).map((_, setIdx) => {
             const isDone = isSetCompleted(setIdx);
             if (isDiaryMode && !isDone) return null;
             const isNext = setIdx === nextPendingIdx;
@@ -200,7 +212,9 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise; dateStr: string; isDiaryMode
                     )}
                   >
                     {exercise.weightKg ? `${exercise.weightKg} кг × ` : ''}
-                    {exercise.reps} повторений
+                    {exercise.isTimeBased && exercise.durationSeconds
+                      ? `${exercise.durationSeconds} сек`
+                      : `${exercise.reps || 0} повторений`}
                   </span>
 
                   <div
@@ -247,6 +261,15 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise; dateStr: string; isDiaryMode
           </div>
         </div>
       )}
+      {isEditing && (
+        <EditWorkoutExerciseModal
+          exercise={exercise}
+          onClose={() => setIsEditing(false)}
+          onSave={(updates) => {
+            updatePlanExercise(dateStr, exercise.workoutId, updates);
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -264,6 +287,7 @@ export function WorkoutTracker({ onGoToPlan }: { onGoToPlan?: () => void } = {})
   const { plannedWorkouts, completedSets, dailyDurations, finishWorkout } = useWorkoutData();
   const { workoutStartTime, workoutAccumulatedMs } = useTimerContext();
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
+  const [showFinishModal, setShowFinishModal] = useState(false);
 
   const todaysPlan = plannedWorkouts[dateStr] || [];
   const isDayFinished = !!dailyDurations[dateStr];
@@ -272,7 +296,8 @@ export function WorkoutTracker({ onGoToPlan }: { onGoToPlan?: () => void } = {})
   // and only for days that actually have history.
   const filteredPlan = todaysPlan.filter((ex) => {
     let count = 0;
-    for (let i = 0; i < ex.sets; i++) {
+    const sets = ex.sets || 1;
+    for (let i = 0; i < sets; i++) {
       if (completedSets[`${dateStr}_${ex.workoutId}_${i}`]) count++;
     }
     if (viewMode === 'diary') return count > 0;
@@ -280,14 +305,15 @@ export function WorkoutTracker({ onGoToPlan }: { onGoToPlan?: () => void } = {})
   });
 
   // Derived progress for the day (used by the floating finish bar + summary).
-  const totalSets = todaysPlan.reduce((acc, ex) => acc + ex.sets, 0);
+  const totalSetsSum = todaysPlan.reduce((acc, ex) => acc + (ex.sets || 1), 0);
   let doneSets = 0;
   for (const ex of todaysPlan) {
-    for (let i = 0; i < ex.sets; i++) {
+    const sets = ex.sets || 1;
+    for (let i = 0; i < sets; i++) {
       if (completedSets[`${dateStr}_${ex.workoutId}_${i}`]) doneSets++;
     }
   }
-  const progressPct = totalSets > 0 ? Math.round((doneSets / totalSets) * 100) : 0;
+  const progressPct = totalSetsSum > 0 ? Math.round((doneSets / totalSetsSum) * 100) : 0;
   const sessionActive = workoutStartTime !== null || workoutAccumulatedMs > 0;
   const showFinishBar = viewMode === 'plan' && !isDayFinished && sessionActive;
 
@@ -371,7 +397,7 @@ export function WorkoutTracker({ onGoToPlan }: { onGoToPlan?: () => void } = {})
 
         {viewMode === 'plan' && !isDayFinished && sessionActive && (
           <button
-            onClick={finishWorkout}
+            onClick={() => setShowFinishModal(true)}
             className="active:scale-95 mt-2 px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold shadow-[0_0_15px_rgba(6,182,212,0.4)] flex items-center gap-2 transition-all"
           >
             <StopCircle className="w-5 h-5" /> Завершить тренировку
@@ -399,7 +425,7 @@ export function WorkoutTracker({ onGoToPlan }: { onGoToPlan?: () => void } = {})
           <div className="flex items-center justify-between text-[11px] text-slate-300 mb-1.5">
             <span className="font-bold uppercase tracking-widest">Сегодня</span>
             <span className="tabular-nums text-slate-400">
-              {doneSets} / {totalSets} подходов
+              {doneSets} / {totalSetsSum} подходов
             </span>
           </div>
           <div className="h-1.5 rounded-full bg-slate-800/80 overflow-hidden">
@@ -419,12 +445,22 @@ export function WorkoutTracker({ onGoToPlan }: { onGoToPlan?: () => void } = {})
       {showFinishBar && (
         <div className="fixed bottom-20 left-0 right-0 z-30 flex justify-center px-4 pointer-events-none">
           <button
-            onClick={finishWorkout}
+            onClick={() => setShowFinishModal(true)}
             className="pointer-events-auto active:scale-95 px-5 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-full font-bold shadow-[0_8px_30px_rgba(6,182,212,0.45)] flex items-center gap-2 transition-all"
           >
             <StopCircle className="w-4 h-4" /> Завершить и сохранить
           </button>
         </div>
+      )}
+
+      {showFinishModal && (
+        <FinishWorkoutModal
+          onClose={() => setShowFinishModal(false)}
+          onSave={(rating, notes) => {
+            finishWorkout(rating, notes);
+            setShowFinishModal(false);
+          }}
+        />
       )}
     </div>
   );

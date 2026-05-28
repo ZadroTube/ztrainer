@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { generatePlan, applyPlan, AIPlanExercise, GeneratePlanResponse } from '@/lib/botApi';
+import { generatePlan, applyPlan, checkPreGenerate, AIPlanExercise, GeneratePlanResponse } from '@/lib/botApi';
 import { X, Sparkles, Calendar, Play, Check, ChevronLeft, ChevronRight, RefreshCw, Edit, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, addDays } from 'date-fns';
@@ -19,12 +19,16 @@ const TIPS = [
 ];
 
 export function GeneratePlanModal({ onClose, onSuccess }: GeneratePlanModalProps) {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
   const [startDate, setStartDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // AI Pre-Generate check
+  const [userWishes, setUserWishes] = useState('');
+  const [aiQuestion, setAiQuestion] = useState<string | null>(null);
   
   // AI Plan results
   const [planResult, setPlanResult] = useState<GeneratePlanResponse | null>(null);
@@ -33,22 +37,36 @@ export function GeneratePlanModal({ onClose, onSuccess }: GeneratePlanModalProps
   // Rotate tips during loading
   const [tipIndex, setTipIndex] = useState(0);
   useEffect(() => {
-    if (step !== 2) return;
+    if (step !== 3) return;
     const interval = setInterval(() => {
       setTipIndex(prev => (prev + 1) % TIPS.length);
     }, 4000);
     return () => clearInterval(interval);
   }, [step]);
 
-  const handleGenerate = async () => {
+  const handlePreGenerate = async () => {
     setStep(2);
     setLoading(true);
     setError(null);
     try {
-      const res = await generatePlan(period, startDate);
+      const res = await checkPreGenerate();
+      setAiQuestion(res.question);
+    } catch (e) {
+      setAiQuestion("Не удалось получить контекст тренера. Есть ли какие-то жалобы или пожелания перед созданием плана?");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleActualGenerate = async () => {
+    setStep(3);
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await generatePlan(period, startDate, userWishes);
       if (res && res.plan && Object.keys(res.plan).length > 0) {
         setPlanResult(res);
-        setStep(3);
+        setStep(4);
       } else {
         setError("ИИ вернул пустой план. Попробуйте еще раз.");
         setStep(1);
@@ -94,7 +112,7 @@ export function GeneratePlanModal({ onClose, onSuccess }: GeneratePlanModalProps
             <Sparkles className="w-5 h-5 text-cyan-400 animate-pulse" />
             <h3 className="text-base font-bold text-white">ИИ-генератор планов</h3>
           </div>
-          {step !== 2 && (
+          {step !== 3 && (
             <button 
               onClick={onClose} 
               className="active:scale-90 w-8 h-8 rounded-full bg-slate-800/80 hover:bg-slate-700/80 flex items-center justify-center transition-colors"
@@ -162,7 +180,7 @@ export function GeneratePlanModal({ onClose, onSuccess }: GeneratePlanModalProps
 
               <div className="pt-6">
                 <button
-                  onClick={handleGenerate}
+                  onClick={handlePreGenerate}
                   className="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-500 to-indigo-500 text-white shadow-[0_4px_14px_rgba(6,182,212,0.25)] hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2"
                 >
                   <Sparkles className="w-4 h-4" />
@@ -172,8 +190,52 @@ export function GeneratePlanModal({ onClose, onSuccess }: GeneratePlanModalProps
             </div>
           )}
 
-          {/* STEP 2: Loading animation */}
+          {/* STEP 2: Pre-Generate Questions */}
           {step === 2 && (
+            <div className="space-y-5 flex-1 flex flex-col">
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-slate-200">Подготовка к планированию</h4>
+                <p className="text-xs text-slate-400">Тренеру нужны вводные данные</p>
+              </div>
+
+              {loading ? (
+                <div className="flex-1 flex items-center justify-center py-8">
+                  <div className="w-8 h-8 border-2 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin" />
+                </div>
+              ) : (
+                <div className="space-y-4 flex-1">
+                  <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                    <p className="text-sm text-slate-300 italic mb-2">"{aiQuestion}"</p>
+                  </div>
+                  
+                  <textarea
+                    value={userWishes}
+                    onChange={(e) => setUserWishes(e.target.value)}
+                    placeholder="Ваши пожелания, жалобы, или оставьте пустым..."
+                    className="w-full bg-slate-900/40 border border-slate-800 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-cyan-500/60 transition-colors min-h-[120px] resize-none"
+                  />
+
+                  {error && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300 flex gap-2.5 items-start">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span>{error}</span>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleActualGenerate}
+                    className="w-full mt-4 py-3.5 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-500 to-indigo-500 text-white shadow-[0_4px_14px_rgba(6,182,212,0.25)] hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Check className="w-4 h-4" />
+                    Подтвердить и сгенерировать
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STEP 3: Loading animation */}
+          {step === 3 && (
             <div className="flex-1 flex flex-col items-center justify-center py-8 space-y-6">
               <div className="relative flex items-center justify-center">
                 {/* Neon spinning outer ring */}
@@ -197,8 +259,8 @@ export function GeneratePlanModal({ onClose, onSuccess }: GeneratePlanModalProps
             </div>
           )}
 
-          {/* STEP 3: Review & Apply */}
-          {step === 3 && planResult && (
+          {/* STEP 4: Review & Apply */}
+          {step === 4 && planResult && (
             <div className="space-y-4 flex-1 flex flex-col justify-between">
               
               {/* Summary / AI Insights */}
@@ -311,7 +373,7 @@ export function GeneratePlanModal({ onClose, onSuccess }: GeneratePlanModalProps
               {/* Action Buttons */}
               <div className="flex gap-2.5 pt-3 border-t border-slate-850">
                 <button
-                  onClick={handleGenerate}
+                  onClick={handlePreGenerate}
                   className="py-3 px-3 rounded-xl border border-slate-800 text-slate-300 hover:text-white transition-all active:scale-95 flex items-center justify-center gap-1.5 flex-1 bg-slate-900/30"
                   title="Перегенерировать план"
                 >

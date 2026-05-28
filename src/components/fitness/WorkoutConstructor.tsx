@@ -66,6 +66,7 @@ export function WorkoutConstructor() {
     defaultReps: 10,
     defaultRestTimeSeconds: 60,
     defaultWeightKg: '' as string | number,
+    isTimeBased: false,
   });
 
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -82,7 +83,7 @@ export function WorkoutConstructor() {
     setExerciseForm({
       name: '', targetMuscleGroup: '',
       defaultSets: 3, defaultReps: 10, defaultRestTimeSeconds: 60,
-      defaultWeightKg: '',
+      defaultWeightKg: '', isTimeBased: false,
     });
     setEditingExerciseId(null);
     setIsCreating(false);
@@ -102,6 +103,7 @@ export function WorkoutConstructor() {
         w !== '' && w !== undefined && !isNaN(Number(w)) && Number(w) >= 0
           ? Number(w)
           : undefined,
+      isTimeBased: exerciseForm.isTimeBased,
     };
     if (editingExerciseId) updateExerciseInDb(editingExerciseId, exerciseData);
     else addExerciseToDb(exerciseData);
@@ -122,6 +124,7 @@ export function WorkoutConstructor() {
       defaultReps: ex.defaultReps ?? 10,
       defaultRestTimeSeconds: ex.defaultRestTimeSeconds ?? 60,
       defaultWeightKg: ex.defaultWeightKg != null ? ex.defaultWeightKg : '',
+      isTimeBased: ex.isTimeBased ?? false,
     });
     setIsCreating(true);
     setOpenMenuId(null);
@@ -336,15 +339,28 @@ export function WorkoutConstructor() {
                     setExerciseForm({ ...exerciseForm, defaultSets: parseInt(v) || 1 })
                   }
                 />
-                <FormField
-                  label="Повторений"
-                  type="number"
-                  min={1}
-                  value={exerciseForm.defaultReps}
-                  onChange={(v) =>
-                    setExerciseForm({ ...exerciseForm, defaultReps: parseInt(v) || 1 })
-                  }
-                />
+                {exerciseForm.isTimeBased ? (
+                  <FormField
+                    label="Время (сек)"
+                    type="number"
+                    step={5}
+                    min={5}
+                    value={exerciseForm.defaultReps}
+                    onChange={(v) =>
+                      setExerciseForm({ ...exerciseForm, defaultReps: parseInt(v) || 10 })
+                    }
+                  />
+                ) : (
+                  <FormField
+                    label="Повторений"
+                    type="number"
+                    min={1}
+                    value={exerciseForm.defaultReps}
+                    onChange={(v) =>
+                      setExerciseForm({ ...exerciseForm, defaultReps: parseInt(v) || 1 })
+                    }
+                  />
+                )}
                 <FormField
                   label="Вес (кг)"
                   type="number"
@@ -365,7 +381,16 @@ export function WorkoutConstructor() {
                   }
                 />
               </div>
-              <div className="flex justify-end mt-1">
+              <div className="flex items-center justify-between mt-1">
+                <label className="flex items-center gap-2 cursor-pointer text-[11px] text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={exerciseForm.isTimeBased}
+                    onChange={(e) => setExerciseForm({ ...exerciseForm, isTimeBased: e.target.checked })}
+                    className="accent-cyan-500 w-3.5 h-3.5"
+                  />
+                  На время (сек)
+                </label>
                 <button
                   type="submit"
                   className="bg-cyan-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-cyan-400 transition-colors"
@@ -552,7 +577,7 @@ function LibraryRow({
               </span>
             )}
             <span className="text-[10px] text-slate-500 tabular-nums">
-              {ex.defaultSets || 3}×{ex.defaultReps || 10}
+              {ex.defaultSets || 3}×{ex.isTimeBased ? `${ex.defaultReps || 10}с` : (ex.defaultReps || 10)}
               {ex.defaultWeightKg ? ` · ${ex.defaultWeightKg} кг` : ''} ·{' '}
               {ex.defaultRestTimeSeconds || 60}с
             </span>

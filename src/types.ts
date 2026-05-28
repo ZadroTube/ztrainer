@@ -8,12 +8,14 @@ export interface BaseExercise {
   defaultReps?: number;
   defaultRestTimeSeconds?: number;
   defaultWeightKg?: number; // undefined = без веса (подтягивания, бег и т.д.)
+  isTimeBased?: boolean; // упражнение на время (планка, велосипед)
 }
 
 export interface WorkoutExercise extends BaseExercise {
   workoutId: string; // unique instance in a day (since we can add same exercise twice)
-  sets: number;
-  reps: number;
+  sets?: number;
+  reps?: number;
+  durationSeconds?: number; // Для упражнений на время
   restTimeSeconds?: number;
   weightKg?: number; // undefined = без веса
 }
@@ -47,6 +49,16 @@ export interface BodyMetric {
   hips_cm?: number | null;
   thigh_r_cm?: number | null;
   thigh_l_cm?: number | null;
+  notes?: string | null;
+  created_at?: string;
+}
+
+export interface WorkoutSession {
+  id: string;
+  user_id?: string;
+  plan_date: string;
+  duration_seconds: number;
+  rating?: number | null;
   notes?: string | null;
   created_at?: string;
 }

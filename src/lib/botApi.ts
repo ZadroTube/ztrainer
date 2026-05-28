@@ -442,6 +442,17 @@ export interface AIPlanExercise {
   rest_seconds?: number;
 }
 
+export interface PreGenerateCheckResponse {
+  question: string;
+}
+
+export function checkPreGenerate(signal?: AbortSignal): Promise<PreGenerateCheckResponse> {
+  return request<PreGenerateCheckResponse>('/api/fitness/pre-generate-check', {
+    method: 'GET',
+    signal,
+  });
+}
+
 export interface GeneratePlanResponse {
   plan: Record<string, AIPlanExercise[]>;
   summary: string;
@@ -450,11 +461,12 @@ export interface GeneratePlanResponse {
 export function generatePlan(
   period: 'day' | 'week' | 'month',
   startDate: string,
+  userWishes?: string,
   signal?: AbortSignal,
 ): Promise<GeneratePlanResponse> {
   return request<GeneratePlanResponse>('/api/fitness/generate-plan', {
     method: 'POST',
-    body: { period, start_date: startDate },
+    body: { period, start_date: startDate, user_wishes: userWishes },
     signal,
   });
 }

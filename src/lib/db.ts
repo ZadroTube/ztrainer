@@ -8,6 +8,7 @@ export interface LocalExercise {
   default_reps: number;
   default_rest_time_seconds: number;
   default_weight_kg?: number | null;
+  is_time_based?: boolean | null;
   archived_at?: string | null;
 }
 
@@ -20,6 +21,7 @@ export interface LocalWorkoutPlan {
   sets: number;
   reps: number;
   rest_time_seconds: number | null;
+  duration_seconds?: number | null;
   weight_kg: number | null;
   sort_order: number;
 }
@@ -35,6 +37,8 @@ export interface LocalWorkoutSession {
   id: string;
   plan_date: string;
   duration_seconds: number;
+  rating?: number | null;
+  notes?: string | null;
 }
 
 export interface LocalExerciseRest {

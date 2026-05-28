@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { format, subDays, differenceInCalendarDays, parseISO } from 'date-fns';
 import { TabName, BaseExercise, WorkoutExercise, PlannedWorkoutsDict, CompletedSetsDict, UserStats, FitnessGoal, FitnessLevel, TrainingLocation, BodyMetric, CoachMessage, CoachAdaptation } from '@/types';
 import { supabase, authViaTelegram } from '@/lib/supabase';
@@ -151,7 +151,7 @@ interface WorkoutDataContextType {
   deleteExerciseFromDb: (id: string) => void;
   plannedWorkouts: PlannedWorkoutsDict;
   addExerciseToPlan: (dateStr: string, exercise: BaseExercise, sets: number, reps: number, restTimeSeconds?: number) => void;
-  updatePlanExercise: (dateStr: string, workoutId: string, updates: Partial<Pick<WorkoutExercise, 'sets' | 'reps' | 'restTimeSeconds' | 'weightKg'>>) => void;
+  updatePlanExercise: (dateStr: string, workoutId: string, updates: Partial<Pick<WorkoutExercise, 'sets' | 'reps' | 'durationSeconds' | 'restTimeSeconds' | 'weightKg'>>) => void;
   removeExerciseFromPlan: (dateStr: string, workoutId: string) => void;
   completedSets: CompletedSetsDict;
   toggleSetCompletion: (dateStr: string, workoutId: string, setIndex: number, isCompleted: boolean) => void;
@@ -159,7 +159,7 @@ interface WorkoutDataContextType {
   userStats: UserStats;
   resetUserStats: () => void;
   actualExerciseRests: Record<string, number>;
-  finishWorkout: () => void;
+  finishWorkout: (rating?: number, notes?: string) => void;
   bodyMetrics: BodyMetric[];
   saveBodyMetrics: (metrics: Partial<BodyMetric>) => Promise<void>;
   coachMessages: CoachMessage[];
@@ -199,6 +199,7 @@ const TimerContext = createContext<TimerContextType | undefined>(undefined);
 // ===================== Provider =====================
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const localSessionIds = useRef<Set<string>>(new Set());
   // --- UI state ---
   const [loading, setLoading] = useState(true);
   const [needsLogin, setNeedsLogin] = useState(false);
@@ -930,14 +931,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const ev = payload.eventType;
         if (ev === 'INSERT') {
           const r = payload.new;
-          setDailyDurations(prev => ({
-            ...prev,
-            [r.plan_date]: (prev[r.plan_date] ?? 0) + (r.duration_seconds || 0),
-          }));
+          if (!localSessionIds.current.has(r.id)) {
+            setDailyDurations(prev => ({
+              ...prev,
+              [r.plan_date]: (prev[r.plan_date] ?? 0) + (r.duration_seconds || 0),
+            }));
+          }
           db.workout_sessions.put({
             id: r.id,
             plan_date: r.plan_date,
             duration_seconds: r.duration_seconds,
+            rating: r.rating,
+            notes: r.notes,
           });
         }
       },
@@ -1392,7 +1397,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     bumpHistoryCache();
   }, [executeMutation]);
 
-  const updatePlanExercise = useCallback((dateStr: string, wid: string, updates: Partial<Pick<WorkoutExercise, 'sets' | 'reps' | 'restTimeSeconds' | 'weightKg'>>) => {
+  const updatePlanExercise = useCallback((dateStr: string, wid: string, updates: Partial<Pick<WorkoutExercise, 'sets' | 'reps' | 'durationSeconds' | 'restTimeSeconds' | 'weightKg'>>) => {
     let original: WorkoutExercise | undefined;
     setPlannedWorkouts(prev => {
       const today = prev[dateStr] ?? [];
@@ -1407,7 +1412,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const sbUpdates: any = {};
     if (updates.sets !== undefined) { localUpdates.sets = updates.sets; sbUpdates.sets = updates.sets; }
     if (updates.reps !== undefined) { localUpdates.reps = updates.reps; sbUpdates.reps = updates.reps; }
+    if (updates.durationSeconds !== undefined) { localUpdates.duration_seconds = updates.durationSeconds; sbUpdates.duration_seconds = updates.durationSeconds; }
     if (updates.restTimeSeconds !== undefined) { localUpdates.rest_time_seconds = updates.restTimeSeconds ?? null; sbUpdates.rest_time_seconds = updates.restTimeSeconds ?? null; }
+    if (updates.weightKg !== undefined) { localUpdates.weight_kg = updates.weightKg ?? null; sbUpdates.weight_kg = updates.weightKg ?? null; }
     if (updates.weightKg !== undefined) { localUpdates.weight_kg = updates.weightKg ?? null; sbUpdates.weight_kg = updates.weightKg ?? null; }
 
     executeMutation(
@@ -1545,21 +1552,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [workoutStartTime, workoutAccumulatedMs, startWorkoutTimer, executeMutation]);
 
-  const finishWorkout = useCallback(() => {
+  const finishWorkout = useCallback((rating?: number, notes?: string) => {
     const elapsedMs = workoutAccumulatedMs + (workoutStartTime && !isWorkoutPaused ? Date.now() - workoutStartTime : 0);
     const secs = Math.floor(elapsedMs / 1000);
     if (secs > 0) {
       const ds = format(selectedDate, 'yyyy-MM-dd');
       const id = crypto.randomUUID();
+      localSessionIds.current.add(id);
       setDailyDurations(prev => ({ ...prev, [ds]: (prev[ds] ?? 0) + secs }));
       
-      const dbItem = { id, plan_date: ds, duration_seconds: secs };
+      const dbItem = { id, plan_date: ds, duration_seconds: secs, rating: rating ?? null, notes: notes ?? null };
       
       executeMutation(
         'workout_sessions',
         'INSERT',
         dbItem,
-        () => db.workout_sessions.put(dbItem),
+        () => db.workout_sessions.put(dbItem as any),
         () => {
           setDailyDurations(prev => ({ ...prev, [ds]: Math.max(0, (prev[ds] ?? 0) - secs) }));
           db.workout_sessions.delete(id);

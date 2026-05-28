@@ -1,12 +1,13 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { GeneratePlanModal } from './GeneratePlanModal';
-import { generatePlan, applyPlan } from '@/lib/botApi';
+import { generatePlan, applyPlan, getPreGenerateCheck } from '@/lib/botApi';
 import React from 'react';
 
 vi.mock('@/lib/botApi', () => ({
   generatePlan: vi.fn(),
   applyPlan: vi.fn(),
+  getPreGenerateCheck: vi.fn(),
 }));
 
 describe('GeneratePlanModal Component', () => {
@@ -58,6 +59,7 @@ describe('GeneratePlanModal Component', () => {
       summary: 'Тестовый сплит на 2 дня'
     };
 
+    vi.mocked(getPreGenerateCheck).mockResolvedValueOnce({ ok: true, question: 'Вопрос ИИ' });
     vi.mocked(generatePlan).mockResolvedValueOnce(mockPlanResponse);
 
     render(<GeneratePlanModal onClose={mockOnClose} onSuccess={mockOnSuccess} />);
@@ -65,7 +67,11 @@ describe('GeneratePlanModal Component', () => {
     const generateBtn = screen.getByRole('button', { name: 'Сгенерировать план' });
     fireEvent.click(generateBtn);
 
-    // Should transition to Step 2: Loading State
+    // Wait for Step 2
+    await screen.findByText('Подтвердить и сгенерировать');
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить и сгенерировать' }));
+
+    // Should transition to Loading State
     expect(screen.getByText('🤖 Тренер составляет ваш план...')).toBeTruthy();
     expect(screen.getByText('Это займет около 10–15 секунд')).toBeTruthy();
 
@@ -101,12 +107,16 @@ describe('GeneratePlanModal Component', () => {
       summary: 'Тестовый сплит на 1 день'
     };
 
+    vi.mocked(getPreGenerateCheck).mockResolvedValueOnce({ ok: true, question: 'Вопрос ИИ' });
     vi.mocked(generatePlan).mockResolvedValueOnce(mockPlanResponse);
     vi.mocked(applyPlan).mockResolvedValueOnce({ ok: true, exercises_created: 1 });
 
     render(<GeneratePlanModal onClose={mockOnClose} onSuccess={mockOnSuccess} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Сгенерировать план' }));
+
+    await screen.findByText('Подтвердить и сгенерировать');
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить и сгенерировать' }));
 
     // Wait for the third step
     await screen.findByText('Резюме тренера');
@@ -122,11 +132,15 @@ describe('GeneratePlanModal Component', () => {
   });
 
   test('handles error state if generator endpoint fails', async () => {
+    vi.mocked(getPreGenerateCheck).mockResolvedValueOnce({ ok: true, question: 'Вопрос ИИ' });
     vi.mocked(generatePlan).mockRejectedValueOnce(new Error('API Error'));
 
     render(<GeneratePlanModal onClose={mockOnClose} onSuccess={mockOnSuccess} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Сгенерировать план' }));
+
+    await screen.findByText('Подтвердить и сгенерировать');
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить и сгенерировать' }));
 
     // Wait and verify error shows on step 1 (since it goes back on error)
     await waitFor(() => {
@@ -135,11 +149,15 @@ describe('GeneratePlanModal Component', () => {
   });
 
   test('handles error state if generator endpoint returns empty plan', async () => {
+    vi.mocked(getPreGenerateCheck).mockResolvedValueOnce({ ok: true, question: 'Вопрос ИИ' });
     vi.mocked(generatePlan).mockResolvedValueOnce({ plan: {}, summary: '' });
 
     render(<GeneratePlanModal onClose={mockOnClose} onSuccess={mockOnSuccess} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Сгенерировать план' }));
+
+    await screen.findByText('Подтвердить и сгенерировать');
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить и сгенерировать' }));
 
     // Wait and verify error shows on step 1 (since it goes back on error)
     await waitFor(() => {
@@ -157,12 +175,16 @@ describe('GeneratePlanModal Component', () => {
       summary: 'Тестовый сплит на 1 день'
     };
 
+    vi.mocked(getPreGenerateCheck).mockResolvedValueOnce({ ok: true, question: 'Вопрос ИИ' });
     vi.mocked(generatePlan).mockResolvedValueOnce(mockPlanResponse);
     vi.mocked(applyPlan).mockResolvedValueOnce({ ok: false, exercises_created: 0 });
 
     render(<GeneratePlanModal onClose={mockOnClose} onSuccess={mockOnSuccess} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Сгенерировать план' }));
+
+    await screen.findByText('Подтвердить и сгенерировать');
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить и сгенерировать' }));
 
     await screen.findByText('Резюме тренера');
 
