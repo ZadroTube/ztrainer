@@ -11,14 +11,16 @@ interface EditWorkoutExerciseModalProps {
 export function EditWorkoutExerciseModal({ exercise, onClose, onSave }: EditWorkoutExerciseModalProps) {
   const [sets, setSets] = useState(exercise.sets?.toString() ?? '');
   const [reps, setReps] = useState(exercise.reps?.toString() ?? '');
-  const [duration, setDuration] = useState(exercise.durationSeconds?.toString() ?? '');
+  const [duration, setDuration] = useState(
+    exercise.durationSeconds ? Math.floor(exercise.durationSeconds / 60).toString() : ''
+  );
   const [weight, setWeight] = useState(exercise.weightKg?.toString() ?? '');
 
   const handleSave = () => {
     onSave({
       sets: sets === '' ? undefined : parseInt(sets, 10),
       reps: reps === '' ? undefined : parseInt(reps, 10),
-      durationSeconds: duration === '' ? undefined : parseInt(duration, 10),
+      durationSeconds: duration === '' ? undefined : parseInt(duration, 10) * 60,
       weightKg: weight === '' ? undefined : parseFloat(weight),
     });
     onClose();
@@ -48,7 +50,7 @@ export function EditWorkoutExerciseModal({ exercise, onClose, onSave }: EditWork
             </div>
             {exercise.isTimeBased ? (
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Секунды</label>
+                <label className="block text-xs text-slate-400 mb-1">Минуты</label>
                 <input
                   type="number"
                   value={duration}

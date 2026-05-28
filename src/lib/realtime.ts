@@ -30,6 +30,7 @@ export interface ExerciseRow {
   default_rest_time_seconds: number;
   default_weight_kg: number | null;
   archived_at: string | null;
+  is_time_based?: boolean;
 }
 
 export interface WorkoutPlanRow {
@@ -44,6 +45,7 @@ export interface WorkoutPlanRow {
   rest_time_seconds: number | null;
   weight_kg: number | null;
   sort_order: number;
+  duration_seconds?: number | null;
 }
 
 export interface CompletedSetRow {

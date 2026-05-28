@@ -212,8 +212,8 @@ const ExerciseCard: FC<{ exercise: WorkoutExercise; dateStr: string; isDiaryMode
                     )}
                   >
                     {exercise.weightKg ? `${exercise.weightKg} кг × ` : ''}
-                    {exercise.isTimeBased && exercise.durationSeconds
-                      ? `${exercise.durationSeconds} сек`
+                    {exercise.isTimeBased
+                      ? `${exercise.durationSeconds ? Math.floor(exercise.durationSeconds / 60) : (exercise.reps || 0)} мин`
                       : `${exercise.reps || 0} повторений`}
                   </span>
 

@@ -244,7 +244,20 @@ export function WorkoutConstructor() {
                   </div>
                   <div className="flex items-center gap-2 mt-2">
                     <PlanField label="Подх." value={ex.sets} onChange={(v) => updatePlanExercise(dateStr, ex.workoutId, { sets: Number(v) || 1 })} />
-                    <PlanField label="Повт." value={ex.reps} onChange={(v) => updatePlanExercise(dateStr, ex.workoutId, { reps: Number(v) || 1 })} />
+                    {ex.isTimeBased ? (
+                      <PlanField
+                        label="мин."
+                        value={ex.durationSeconds ? Math.floor(ex.durationSeconds / 60) : (ex.reps || '')}
+                        onChange={(v) =>
+                          updatePlanExercise(dateStr, ex.workoutId, {
+                            reps: Number(v) || 1,
+                            durationSeconds: (Number(v) || 1) * 60,
+                          })
+                        }
+                      />
+                    ) : (
+                      <PlanField label="Повт." value={ex.reps} onChange={(v) => updatePlanExercise(dateStr, ex.workoutId, { reps: Number(v) || 1 })} />
+                    )}
                     <PlanField
                       label="кг"
                       value={ex.weightKg ?? ''}
@@ -341,10 +354,10 @@ export function WorkoutConstructor() {
                 />
                 {exerciseForm.isTimeBased ? (
                   <FormField
-                    label="Время (сек)"
+                    label="Время (мин)"
                     type="number"
-                    step={5}
-                    min={5}
+                    step={1}
+                    min={1}
                     value={exerciseForm.defaultReps}
                     onChange={(v) =>
                       setExerciseForm({ ...exerciseForm, defaultReps: parseInt(v) || 10 })
@@ -389,7 +402,7 @@ export function WorkoutConstructor() {
                     onChange={(e) => setExerciseForm({ ...exerciseForm, isTimeBased: e.target.checked })}
                     className="accent-cyan-500 w-3.5 h-3.5"
                   />
-                  На время (сек)
+                  На время (мин)
                 </label>
                 <button
                   type="submit"
@@ -577,7 +590,7 @@ function LibraryRow({
               </span>
             )}
             <span className="text-[10px] text-slate-500 tabular-nums">
-              {ex.defaultSets || 3}×{ex.isTimeBased ? `${ex.defaultReps || 10}с` : (ex.defaultReps || 10)}
+              {ex.defaultSets || 3}×{ex.isTimeBased ? `${ex.defaultReps || 10} мин` : (ex.defaultReps || 10)}
               {ex.defaultWeightKg ? ` · ${ex.defaultWeightKg} кг` : ''} ·{' '}
               {ex.defaultRestTimeSeconds || 60}с
             </span>

@@ -48,12 +48,14 @@ interface ExerciseRow {
   id: string; name: string; target_muscle_group: string | null;
   default_sets: number; default_reps: number; default_rest_time_seconds: number;
   default_weight_kg: number | null;
+  is_time_based?: boolean;
 }
 
 interface WorkoutPlanRow {
   id: string; exercise_id: string | null; name: string; target_muscle_group: string | null;
   plan_date: string; sets: number; reps: number; rest_time_seconds: number | null;
   weight_kg: number | null; sort_order: number;
+  duration_seconds?: number | null;
 }
 
 interface CompletedSetRow {
@@ -210,6 +212,7 @@ const TimerContext = createContext<TimerContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const localSessionIds = useRef<Set<string>>(new Set());
+  const exerciseDbRef = useRef<BaseExercise[]>([]);
   // --- UI state ---
   const [loading, setLoading] = useState(true);
   const [needsLogin, setNeedsLogin] = useState(false);
@@ -233,6 +236,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // --- Workout data ---
   const [exerciseDb, setExerciseDb] = useState<BaseExercise[]>([]);
+  useEffect(() => {
+    exerciseDbRef.current = exerciseDb;
+  }, [exerciseDb]);
   const [plannedWorkouts, setPlannedWorkouts] = useState<PlannedWorkoutsDict>({});
   const [completedSets, setCompletedSets] = useState<CompletedSetsDict>({});
   const [dailyDurations, setDailyDurations] = useState<Record<string, number>>({});
@@ -518,6 +524,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         defaultSets: r.default_sets, defaultReps: r.default_reps,
         defaultRestTimeSeconds: r.default_rest_time_seconds,
         defaultWeightKg: r.default_weight_kg != null ? Number(r.default_weight_kg) : undefined,
+        isTimeBased: r.is_time_based ?? false,
       }));
       setExerciseDb(exerciseData);
 
@@ -534,6 +541,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             default_rest_time_seconds: r.default_rest_time_seconds,
             default_weight_kg: r.default_weight_kg != null ? Number(r.default_weight_kg) : null,
             archived_at: r.archived_at ?? null,
+            is_time_based: r.is_time_based ?? false,
           }))
         );
       }
@@ -549,11 +557,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const plans: PlannedWorkoutsDict = {};
       for (const r of (wp ?? []) as WorkoutPlanRow[]) {
         if (!plans[r.plan_date]) plans[r.plan_date] = [];
+        const baseEx = exerciseData.find(e => e.id === r.exercise_id);
         plans[r.plan_date].push({
           id: r.exercise_id ?? '', name: r.name, targetMuscleGroup: r.target_muscle_group ?? undefined,
           defaultSets: undefined, defaultReps: undefined, defaultRestTimeSeconds: undefined, defaultWeightKg: undefined,
           workoutId: r.id, sets: r.sets, reps: r.reps, restTimeSeconds: r.rest_time_seconds,
           weightKg: r.weight_kg != null ? Number(r.weight_kg) : undefined,
+          isTimeBased: baseEx ? (baseEx.isTimeBased ?? false) : (r.duration_seconds != null),
+          durationSeconds: r.duration_seconds ?? undefined,
         });
       }
       setPlannedWorkouts(plans);
@@ -570,6 +581,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             sets: r.sets,
             reps: r.reps,
             rest_time_seconds: r.rest_time_seconds ?? null,
+            duration_seconds: r.duration_seconds ?? null,
             weight_kg: r.weight_kg != null ? Number(r.weight_kg) : null,
             sort_order: r.sort_order,
           }))
@@ -824,6 +836,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             defaultReps: r.default_reps,
             defaultRestTimeSeconds: r.default_rest_time_seconds,
             defaultWeightKg: r.default_weight_kg != null ? Number(r.default_weight_kg) : undefined,
+            isTimeBased: r.is_time_based ?? false,
           };
           setExerciseDb(prev => {
             const idx = prev.findIndex(e => e.id === r.id);
@@ -839,6 +852,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             default_rest_time_seconds: r.default_rest_time_seconds,
             default_weight_kg: r.default_weight_kg != null ? Number(r.default_weight_kg) : null,
             archived_at: r.archived_at ?? null,
+            is_time_based: r.is_time_based ?? false,
           });
         } else if (ev === 'DELETE') {
           const old = payload.old;
@@ -855,6 +869,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (ev === 'INSERT' || ev === 'UPDATE') {
           const r = payload.new;
           if (!r || !r.id) return;
+          const baseEx = exerciseDbRef.current.find(e => e.id === r.exercise_id);
           const mapped: WorkoutExercise = {
             id: r.exercise_id ?? '',
             name: r.name,
@@ -868,6 +883,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             reps: r.reps,
             restTimeSeconds: r.rest_time_seconds ?? undefined,
             weightKg: r.weight_kg != null ? Number(r.weight_kg) : undefined,
+            isTimeBased: baseEx ? (baseEx.isTimeBased ?? false) : (r.duration_seconds != null),
+            durationSeconds: r.duration_seconds ?? undefined,
           };
           setPlannedWorkouts(prev => {
             const day = prev[r.plan_date] ?? [];
@@ -884,6 +901,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             sets: r.sets,
             reps: r.reps,
             rest_time_seconds: r.rest_time_seconds ?? null,
+            duration_seconds: r.duration_seconds ?? null,
             weight_kg: r.weight_kg != null ? Number(r.weight_kg) : null,
             sort_order: r.sort_order,
           });
@@ -1286,6 +1304,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       default_reps: n.defaultReps ?? 10,
       default_rest_time_seconds: n.defaultRestTimeSeconds ?? 90,
       default_weight_kg: n.defaultWeightKg ?? null,
+      is_time_based: n.isTimeBased ?? false,
     };
     
     executeMutation(
@@ -1315,6 +1334,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       default_reps: ex.defaultReps ?? 10,
       default_rest_time_seconds: ex.defaultRestTimeSeconds ?? 90,
       default_weight_kg: ex.defaultWeightKg ?? null,
+      is_time_based: ex.isTimeBased ?? false,
     };
 
     executeMutation(
@@ -1329,6 +1349,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           default_reps: ex.defaultReps ?? 10,
           default_rest_time_seconds: ex.defaultRestTimeSeconds ?? 90,
           default_weight_kg: ex.defaultWeightKg ?? null,
+          is_time_based: ex.isTimeBased ?? false,
         }
       },
       () => db.exercises.put(dbItem),
@@ -1343,6 +1364,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             default_reps: original.defaultReps,
             default_rest_time_seconds: original.defaultRestTimeSeconds,
             default_weight_kg: original.defaultWeightKg ?? null,
+            is_time_based: original.isTimeBased ?? false,
           });
         }
       }
@@ -1378,7 +1400,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addExerciseToPlan = useCallback((dateStr: string, exercise: BaseExercise, sets: number, reps: number, rt?: number) => {
     const wid = generateUUID();
     const weightKg = exercise.defaultWeightKg;
-    const newItem = { ...exercise, workoutId: wid, sets, reps, restTimeSeconds: rt, weightKg };
+    const isTimeBased = exercise.isTimeBased ?? false;
+    const durationSeconds = isTimeBased ? reps * 60 : undefined;
+    const newItem = { ...exercise, workoutId: wid, sets, reps, restTimeSeconds: rt, weightKg, isTimeBased, durationSeconds };
     
     const dbItem = {
       id: wid,
@@ -1389,6 +1413,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sets,
       reps,
       rest_time_seconds: rt ?? null,
+      duration_seconds: durationSeconds ?? null,
       weight_kg: weightKg ?? null,
       sort_order: 0
     };
