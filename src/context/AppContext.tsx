@@ -490,7 +490,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         supabase.from('exercises').select('*').is('archived_at', null).order('created_at'),
         supabase.from('workout_plans').select('*').gte('plan_date', since).order('sort_order'),
         supabase.from('completed_sets').select('*').gte('plan_date', since),
-        supabase.from('workout_sessions').select('plan_date, duration_seconds').gte('plan_date', since),
+        supabase.from('workout_sessions').select('id, plan_date, duration_seconds, rating, notes').gte('plan_date', since),
         supabase.from('exercise_rests').select('*').gte('recorded_at', since),
         supabase.from('user_achievements').select('*'),
         supabase.from('body_metrics').select('*').order('date', { ascending: false }).limit(60),
@@ -603,6 +603,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             id: r.id,
             plan_date: r.plan_date,
             duration_seconds: r.duration_seconds,
+            rating: r.rating ?? null,
+            notes: r.notes ?? null,
           }))
         );
       }
